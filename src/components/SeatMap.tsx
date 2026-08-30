@@ -32,23 +32,23 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
         return;
       }
 
-      // Temporarily remove scale to measure true width accurately
+      // Sahi height aur width calculate karne ke liye
       innerRef.current.style.transform = "scale(1)";
       const availableWidth = containerRef.current.clientWidth;
-      const requiredWidth = innerRef.current.scrollWidth;
-      const requiredHeight = innerRef.current.scrollHeight;
+      const requiredWidth = innerRef.current.offsetWidth;
+      const requiredHeight = innerRef.current.offsetHeight;
 
       if (requiredWidth > availableWidth && availableWidth > 0) {
-        const newScale = availableWidth / requiredWidth;
+        // 96% of available width taaki thodi jagah (margin) bachi rahe
+        const newScale = (availableWidth * 0.96) / requiredWidth;
         setScale(newScale);
-        setWrapperHeight(`${requiredHeight * newScale}px`);
+        setWrapperHeight(`${requiredHeight * newScale}px`); // Extra bachi hui height ko kaat dega
       } else {
         setScale(1);
         setWrapperHeight("auto");
       }
     }
 
-    // Run slightly delayed to ensure DOM is fully painted
     const timeout = setTimeout(updateScale, 50);
     window.addEventListener("resize", updateScale);
     return () => {
@@ -59,10 +59,6 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
 
   return (
     <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
-      <div className="stage-wrap">
-        <div className="stage"><span>STAGE</span></div>
-      </div>
-
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', minHeight: '38px' }}>
         <div className="legend" style={{ margin: 0 }}>
           <span><i className="lg-free" />Available</span>
@@ -85,7 +81,6 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
         )}
       </div>
 
-      {/* Main Container */}
       <div 
         ref={containerRef}
         className="map-scroll"
@@ -94,14 +89,14 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
           width: '100%',
           overflowX: isZoomed ? 'auto' : 'hidden',
           overflowY: 'hidden',
-          background: 'rgba(255, 255, 255, 0.03)', // Halki border aur background
-          border: '1px solid rgba(255, 255, 255, 0.08)',
+          background: 'rgba(255, 255, 255, 0.02)',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
           borderRadius: '16px',
-          padding: isZoomed ? '0' : '0.5rem 0', // Padding space
+          height: isZoomed ? 'auto' : wrapperHeight,
+          transition: 'height 0.25s ease-out',
           touchAction: isZoomed ? 'auto' : 'pan-y',
         }}
       >
-        {/* Click to Zoom Overlay */}
         {!isZoomed && (
           <div 
             onClick={() => setIsZoomed(true)}
@@ -115,35 +110,30 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
               background: '#F0A93B', color: '#090b10', padding: '14px 28px',
               borderRadius: '30px', fontWeight: 800, fontSize: '1rem',
               boxShadow: '0 10px 30px rgba(0,0,0,0.9)',
-              textAlign: 'center',
-              maxWidth: '90%' // Text cut na ho isliye limits
+              textAlign: 'center'
             }}>
               Tap map to zoom & select
             </div>
           </div>
         )}
 
-        {/* Height Adjuster Wrapper */}
-        <div 
-          style={{
-            height: wrapperHeight,
-            transition: 'height 0.2s ease-out',
-            display: 'flex',
-            justifyContent: isZoomed ? 'flex-start' : 'center', // Map exactly center me aayega
-            width: '100%'
-          }}
-        >
-          {/* Scaled Inner Map */}
+        <div style={{ display: 'flex', justifyContent: isZoomed ? 'flex-start' : 'center', width: '100%' }}>
           <div 
             ref={innerRef}
             style={{
               transform: `scale(${scale})`,
               transformOrigin: 'top center',
               width: 'max-content',
-              transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-              willChange: 'transform'
+              transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+              willChange: 'transform',
+              padding: '1.5rem' // Scale hone par space barabar rahega
             }}
           >
+            {/* STAGE ko inner container ke andar move kar diya gaya hai taaki dono sath me shrink hon */}
+            <div className="stage-wrap" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'center' }}>
+              <div className="stage"><span>STAGE</span></div>
+            </div>
+
             <div className="map-inner" style={{ ["--units" as string]: MAX_ROW_UNITS }}>
               {ROW_IDS.map((row, i) => {
                 const cells = ROW_LAYOUTS[row];
