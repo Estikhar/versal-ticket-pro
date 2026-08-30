@@ -17,47 +17,56 @@ interface Props {
 export default function SeatMap({ statuses, selected, prices, onToggle }: Props) {
   const [isZoomed, setIsZoomed] = useState(false);
   const [scale, setScale] = useState(1);
-  const [baseSize, setBaseSize] = useState({ w: 0, h: 0 });
   const [ready, setReady] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
 
-  // Map ko screen me perfect fit karne ka formula (No extra empty space)
+  // Map ko bade dibbe ke andar perfectly center aur fit karne ka logic
   useEffect(() => {
-    function measurePerfectFit() {
+    function calculateLayout() {
       if (!containerRef.current || !mapRef.current) return;
 
-      // Original size naapne ke liye temporarily scale hatao
+      if (isZoomed) {
+        setScale(1); // Zoom in par asli size
+        setReady(true);
+        return;
+      }
+
+      // Asli size naapne ke liye thodi der scale hatao
       const oldTransform = mapRef.current.style.transform;
       mapRef.current.style.transform = "none";
 
       const mWidth = mapRef.current.scrollWidth;
       const mHeight = mapRef.current.scrollHeight;
       const cWidth = containerRef.current.clientWidth;
+      const cHeight = containerRef.current.clientHeight;
 
-      mapRef.current.style.transform = oldTransform; // Wapas scale lagao
+      mapRef.current.style.transform = oldTransform;
 
-      if (mWidth > 0 && cWidth > 0) {
-        setBaseSize({ w: mWidth, h: mHeight });
-        // Map ko screen ki width ke hisaab se exactly fit karo
-        setScale(cWidth / mWidth);
+      if (mWidth > 0 && cWidth > 0 && cHeight > 0) {
+        // 32px ki padding minus ki hai taaki map dibbe ke kinaro se na takraye
+        const scaleX = (cWidth - 32) / mWidth;
+        const scaleY = (cHeight - 32) / mHeight;
+        
+        // Jo side choti padegi, us hisaab se map scale down hoga (Perfect center fit)
+        setScale(Math.min(scaleX, scaleY));
         setReady(true);
       }
     }
 
-    const t = setTimeout(measurePerfectFit, 50);
-    window.addEventListener("resize", measurePerfectFit);
+    const t = setTimeout(calculateLayout, 50);
+    window.addEventListener("resize", calculateLayout);
     return () => {
       clearTimeout(t);
-      window.removeEventListener("resize", measurePerfectFit);
+      window.removeEventListener("resize", calculateLayout);
     };
   }, [isZoomed]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", width: "100%", opacity: ready ? 1 : 0, transition: "opacity 0.2s" }}>
       
-      {/* HEADER: Legend & Reset Button */}
+      {/* Top Header - Legend & Reset Button */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', minHeight: '36px' }}>
         <div className="legend" style={{ margin: 0 }}>
           <span><i className="lg-free" />Available</span>
@@ -82,36 +91,45 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
         )}
       </div>
 
-      {/* MAIN CONTAINER */}
+      {/* 
+        MAIN DIBBA (CONTAINER)
+        Iski height fixed '60vh' kar di hai taaki screen ka khali space bhar jaye!
+      */}
       <div 
         ref={containerRef}
         className="map-scroll"
         onClick={() => {
-          if (!isZoomed) setIsZoomed(true); // Kahin bhi tap karne par zoom ho jayega
+          if (!isZoomed) setIsZoomed(true); // Map par kahin bhi tap karne par zoom hoga
         }}
         style={{
           position: 'relative',
           width: '100%',
-          // FIX: Jab zoom nahi hai, toh height exactly map ke barabar hogi = No Empty Space!
-          // Jab zoom hai, toh height 60vh (Scrollable Box) ban jayegi
-          height: isZoomed ? '60vh' : `${baseSize.h * scale}px`, 
-          overflow: isZoomed ? 'auto' : 'hidden', 
+          height: '60vh', // Bada dibba
+          minHeight: '400px',
+          maxHeight: '700px',
           background: 'rgba(255, 255, 255, 0.02)',
           border: '1px solid rgba(255, 255, 255, 0.08)',
           borderRadius: '16px',
+          overflow: isZoomed ? 'auto' : 'hidden', // Scroll sirf zoom hone par on
+          display: 'flex',
+          // FIX: Zoom nahi hai toh Center me rahega, Zoom hai toh Top-Left se scroll shuru hoga
+          alignItems: isZoomed ? 'flex-start' : 'center',
+          justifyContent: isZoomed ? 'flex-start' : 'center',
           cursor: isZoomed ? 'default' : 'zoom-in',
-          touchAction: isZoomed ? 'auto' : 'pan-y',
+          touchAction: isZoomed ? 'auto' : 'none',
         }}
       >
-        {/* ACTUAL SCALABLE MAP */}
+        
+        {/* THE SCALABLE MAP */}
         <div 
           ref={mapRef}
           style={{
-            transform: isZoomed ? 'none' : `scale(${scale})`,
-            transformOrigin: 'top left',
+            transform: `scale(${scale})`,
+            // Zoom out par center se scale hoga, zoom in par top-left se expand hoga
+            transformOrigin: isZoomed ? 'top left' : 'center center',
             width: 'max-content',
-            transition: 'transform 0.2s ease',
-            padding: isZoomed ? '24px' : '0', // Zoom hone par map kinaro se na takraye
+            transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+            padding: isZoomed ? '24px' : '0', // Zoom in karne par kinaro se thoda gap
           }}
         >
           <div className="stage-wrap" style={{ marginBottom: '2.5rem', display: 'flex', justifyContent: 'center' }}>
@@ -150,7 +168,8 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
                           <Seat key={`${row}${cell}`} row={row} n={cell} tier={tier}
                                 status={statuses[`${row}${cell}`] ?? AVAILABLE}
                                 picked={selected.has(`${row}${cell}`)}
-                                price={prices[tier]} onToggle={onToggle} />
+                                price={prices[tier]} onToggle={onToggle} 
+                                isZoomed={isZoomed} />
                         ),
                       )}
                     </div>
@@ -166,9 +185,9 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
   );
 }
 
-function Seat({ row, n, status, picked, price, tier, onToggle }: {
+function Seat({ row, n, status, picked, price, tier, onToggle, isZoomed }: {
   row: string; n: number; status: SeatStatus; picked: boolean;
-  price: number; tier: TierId; onToggle: (s: string) => void;
+  price: number; tier: TierId; onToggle: (s: string) => void; isZoomed: boolean;
 }) {
   const id = `${row}${n}`;
   const house = BLOCKED_SEATS.has(id);
@@ -186,9 +205,13 @@ function Seat({ row, n, status, picked, price, tier, onToggle }: {
   }
 
   return (
-    <button type="button" onClick={(e) => {
-              // Zoom out me seat select hone se rokne ke liye event stop kiya
-              e.stopPropagation();
+    <button type="button" 
+            onClick={(e) => {
+              // Agar map chota hai (Zoomed Out), toh seat select nahi hogi, balki map zoom in hoga
+              if (!isZoomed) {
+                e.preventDefault();
+                return; 
+              }
               onToggle(id);
             }}
             className={`seat ${picked ? "seat--sel" : "seat--free"}`}
