@@ -17,6 +17,9 @@ const GOLD = "#D4AF37";
 const GOLD_HI = "#FFF2CD";
 const INK = "#0f0f0f";
 const MUTED = "#8F95A0";
+/** Edge-bleed artwork. Same file the site header uses; change it here if you
+ *  want a different image on the pass. */
+const TICKET_ART = "/header.png";
 
 export default function TicketCard({ row }: { row: Row }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -135,9 +138,33 @@ export default function TicketCard({ row }: { row: Row }) {
           background: INK, borderRadius: 20, border: `2px solid ${GOLD}`,
           fontFamily: "var(--font-inter), Inter, sans-serif",
         }}>
+          {/* Artwork bleeds in at the TOP and BOTTOM edges only. The mask drops
+              to zero across the middle band, so attendee details always sit on
+              clean black — a full-bleed watermark is exactly what makes printed
+              type look muddy. This is a real <img>, not a CSS background, so
+              the decode-wait in build() covers it and it can never rasterise
+              half-loaded. A missing file simply renders nothing. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={TICKET_ART} alt="" aria-hidden onError={(e) => {
+                 (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+               style={{
+                 position: "absolute", inset: 0, width: "100%", height: "100%",
+                 objectFit: "cover", filter: "blur(5px)", opacity: 0.5,
+                 WebkitMaskImage:
+                   "linear-gradient(to bottom, #000 0%, rgba(0,0,0,.5) 13%,"
+                   + " transparent 25%, transparent 78%, rgba(0,0,0,.42) 91%, rgba(0,0,0,.72) 100%)",
+                 maskImage:
+                   "linear-gradient(to bottom, #000 0%, rgba(0,0,0,.5) 13%,"
+                   + " transparent 25%, transparent 78%, rgba(0,0,0,.42) 91%, rgba(0,0,0,.72) 100%)",
+               }} />
+
           <div style={{ position: "absolute", inset: 0, background:
-            "radial-gradient(620px 340px at 6% -18%, rgba(212,175,55,.20), transparent 62%),"
-            + "radial-gradient(420px 260px at 96% 118%, rgba(212,175,55,.13), transparent 60%)" }} />
+            "radial-gradient(620px 340px at 6% -18%, rgba(212,175,55,.22), transparent 62%),"
+            + "radial-gradient(420px 260px at 96% 118%, rgba(212,175,55,.15), transparent 60%)" }} />
+
+          {/* Vignette, so the artwork never fights the gold frame at the edges. */}
+          <div style={{ position: "absolute", inset: 0, pointerEvents: "none",
+                 boxShadow: "inset 0 0 90px 34px rgba(15,15,15,.92)" }} />
 
           {[[24, 24, 1, 1], [W - 24, 24, -1, 1],
             [24, H - 24, 1, -1], [W - 24, H - 24, -1, -1]].map(([x, y, dx, dy], i) => (
