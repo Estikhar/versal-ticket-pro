@@ -36,8 +36,6 @@ export default function Home() {
       if (r.prices) setPrices(r.prices);
       setLoadError("");
     } catch (e) {
-      // An empty map must never be mistaken for a sold-out hall — that is
-      // exactly what disabled the booking button with no explanation.
       setLoadError(e instanceof Error ? e.message : "Could not load the seat map.");
     } finally {
       setLoaded(true);
@@ -45,7 +43,6 @@ export default function Home() {
   }, []);
   useEffect(() => { void refresh(); }, [refresh]);
 
-  /** Seats listed in physical order, not tap order — reads like a real ticket. */
   const chosen = useMemo(
     () => [...picked].sort((a, b) => (SEAT_RANK[a] ?? 0) - (SEAT_RANK[b] ?? 0)),
     [picked],
@@ -89,14 +86,13 @@ export default function Home() {
     setPicked(new Set());
   }
 
-  // ------------------------------------------------------------------ done
   if (done) {
     return (
       <main className="page">
         <Header />
         <div className="notice">
           <span className="pill" style={{ backgroundImage: "linear-gradient(135deg,#FFD9A0,#F0A93B)" }}>
-            PAYMENT UNDER VERIFICATION
+            BOOKING UNDER VERIFICATION
           </span>
           <h3>{done.seats.length} seat{done.seats.length > 1 ? "s" : ""} held · {inr(done.total)}</h3>
           <div className="chips" style={{ marginBottom: ".9rem" }}>
@@ -111,8 +107,7 @@ export default function Home() {
             <br /><br />
             <b>No tickets are issued yet.</b> Once confirmed, open{" "}
             <b>Download Ticket</b> and enter{" "}
-            <b style={{ color: "#FFF2CD" }}>{done.phone}</b> — every pass booked on
-            that number appears together. Keep your UPI receipt until you are inside.
+            <b style={{ color: "#FFF2CD" }}>{done.phone}</b>. Keep your payment receipt until you are inside.
           </p>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -125,7 +120,6 @@ export default function Home() {
     );
   }
 
-  // --------------------------------------------------------------- step 1
   if (step === 1) {
     return (
       <main className="page">
@@ -135,8 +129,7 @@ export default function Home() {
           <span className="pill">HOW IT WORKS</span>
           <div className="micro" style={{ marginTop: "1rem", lineHeight: 2 }}>
             <b style={{ color: "#FFF2CD" }}>1.</b> Pick your seats — the total updates live.<br />
-            <b style={{ color: "#FFF2CD" }}>2.</b> Pay the exact amount by UPI, then enter your
-            {" "}12-digit transaction ID.<br />
+            <b style={{ color: "#FFF2CD" }}>2.</b> Pay the exact amount by UPI.<br />
             <b style={{ color: "#FFF2CD" }}>3.</b> We verify within {EVENT.verifyHours} hours and
             your passes unlock under <b style={{ color: "#FFF2CD" }}>Download Ticket</b>.
           </div>
@@ -165,7 +158,6 @@ export default function Home() {
     );
   }
 
-  // --------------------------------------------------------------- step 2
   if (step === 2) {
     return (
       <>
@@ -187,7 +179,6 @@ export default function Home() {
           <button className="btn-ghost w-full" onClick={() => setStep(1)}>Back</button>
         </main>
 
-        {/* sticky bottom action bar */}
         <div className="actionbar">
           <div className="actionbar__inner">
             <div className="actionbar__row">
@@ -216,7 +207,6 @@ export default function Home() {
     );
   }
 
-  // --------------------------------------------------------------- step 3
   return (
     <main className="page">
       <Header />
@@ -246,8 +236,6 @@ export default function Home() {
           amount delays verification.
         </div>
         <div className="mt-4 flex flex-col items-center gap-4 sm:flex-row sm:items-start">
-          {/* A missing QR used to render as a broken-image glyph inside a huge
-              empty card, which looks like the payment step is broken. */}
           {qrMissing ? (
             <div className="qr-missing">
               <b>UPI QR not set up</b>
@@ -268,17 +256,12 @@ export default function Home() {
                 </p>
               </>
             )}
-            <p className="micro mt-3">
-              After paying, copy the <b style={{ color: "#FFF2CD" }}>12-digit UTR /
-              Transaction ID</b> from your UPI receipt. Keep the receipt until you
-              are inside the venue.
-            </p>
           </div>
         </div>
       </div>
 
       <div className="card">
-        <span className="pill">STEP 2 · CONFIRM PAYMENT</span>
+        <span className="pill">STEP 2 · CONFIRM BOOKING</span>
         <div className="mt-5 space-y-4">
           <label className="block">
             <span className="field-label">Full Name</span>
@@ -301,21 +284,7 @@ export default function Home() {
         )}
 
         <button className="btn-gold mt-5 w-full" disabled={busy} onClick={submit}>
-          {busy ? "SUBMITTING…" : "SUBMIT FOR VERIFICATION"}
-        </button>
-        <button className="btn-ghost mt-3 w-full" onClick={() => setStep(2)}>
-          Change seats
-        </button>
-      </div>
-
-        {errors.length > 0 && (
-          <ul className="mt-4 space-y-1 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
-            {errors.map((e) => <li key={e}>• {e}</li>)}
-          </ul>
-        )}
-
-        <button className="btn-gold mt-5 w-full" disabled={busy} onClick={submit}>
-          {busy ? "SUBMITTING…" : "SUBMIT FOR VERIFICATION"}
+          {busy ? "SUBMITTING…" : "SUBMIT BOOKING"}
         </button>
         <button className="btn-ghost mt-3 w-full" onClick={() => setStep(2)}>
           Change seats
