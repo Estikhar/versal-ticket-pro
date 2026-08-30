@@ -15,7 +15,6 @@ interface Props {
 }
 
 export default function SeatMap({ statuses, selected, prices, onToggle }: Props) {
-  // Mobile users ke liye auto-fit aur zoom ka toggle
   const [fitMap, setFitMap] = useState(true);
 
   return (
@@ -44,53 +43,58 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
         </button>
       </div>
 
-      <div className="map-scroll" style={fitMap ? { overflowX: 'hidden', width: '100%' } : {}}>
-        <div className="map-inner" style={{ 
-          ["--units" as string]: MAX_ROW_UNITS,
-          // Jab fitMap true hoga, toh pitch (seat size) container ke hisaab se auto-shrink ho jayega
-          ...(fitMap ? { "--pitch": `calc(100% / (${MAX_ROW_UNITS} + 6))` } as React.CSSProperties : {})
-        }}>
-          {ROW_IDS.map((row, i) => {
-            const cells = ROW_LAYOUTS[row];
-            const tier = ROW_TIER[row];
-            const bandHere = i === 0 || ROW_TIER[ROW_IDS[i - 1]] !== tier;
-            
-            return (
-              <div key={row} className="contents">
-                {bandHere && (
-                  <div className="tier-band"
+      <div className="map-scroll" style={fitMap ? { overflowX: 'hidden', width: '100%', display: 'flex', justifyContent: 'center' } : {}}>
+        
+        {/* NAYA FIX: Pure layout ko ek sath scale down kiya gaya hai */}
+        <div style={fitMap ? {
+          width: '1000px', /* Map ki original full width */
+          transform: 'scale(calc((100vw - 32px) / 1000))', /* Mobile screen ke hisaab se auto zoom-out */
+          transformOrigin: 'top center',
+        } : {}}>
+          <div className="map-inner" style={{ ["--units" as string]: MAX_ROW_UNITS }}>
+            {ROW_IDS.map((row, i) => {
+              const cells = ROW_LAYOUTS[row];
+              const tier = ROW_TIER[row];
+              const bandHere = i === 0 || ROW_TIER[ROW_IDS[i - 1]] !== tier;
+              
+              return (
+                <div key={row} className="contents">
+                  {bandHere && (
+                    <div className="tier-band"
+                         style={{ ["--tier-accent" as string]: TIER_ACCENT[tier] }}>
+                      <span className="tier-band__line" />
+                      <span className="tier-band__text">
+                        {tier} · ₹{prices[tier].toLocaleString("en-IN")}
+                        <em>{TIER_ROWS[tier]}</em>
+                      </span>
+                      <span className="tier-band__line" />
+                    </div>
+                  )}
+                  <div className="seat-row"
                        style={{ ["--tier-accent" as string]: TIER_ACCENT[tier] }}>
-                    <span className="tier-band__line" />
-                    <span className="tier-band__text">
-                      {tier} · ₹{prices[tier].toLocaleString("en-IN")}
-                      <em>{TIER_ROWS[tier]}</em>
-                    </span>
-                    <span className="tier-band__line" />
+                    <span className="row-label">{row}</span>
+                    <div className="row-seats"
+                         style={{ width: `calc(${rowUnits(cells)} * var(--pitch))` }}>
+                      {cells.map((cell, i) =>
+                        isGap(cell) ? (
+                          <span key={`g${i}`} className="aisle" aria-hidden
+                                style={{ width: `calc(${cell.gap} * var(--pitch))` }} />
+                        ) : (
+                          <Seat key={`${row}${cell}`} row={row} n={cell} tier={tier}
+                                status={statuses[`${row}${cell}`] ?? AVAILABLE}
+                                picked={selected.has(`${row}${cell}`)}
+                                price={prices[tier]} onToggle={onToggle} />
+                        ),
+                      )}
+                    </div>
+                    <span className="row-label row-label--right">{row}</span>
                   </div>
-                )}
-                <div className="seat-row"
-                     style={{ ["--tier-accent" as string]: TIER_ACCENT[tier] }}>
-                  <span className="row-label">{row}</span>
-                  <div className="row-seats"
-                       style={{ width: `calc(${rowUnits(cells)} * var(--pitch))` }}>
-                    {cells.map((cell, i) =>
-                      isGap(cell) ? (
-                        <span key={`g${i}`} className="aisle" aria-hidden
-                              style={{ width: `calc(${cell.gap} * var(--pitch))` }} />
-                      ) : (
-                        <Seat key={`${row}${cell}`} row={row} n={cell} tier={tier}
-                              status={statuses[`${row}${cell}`] ?? AVAILABLE}
-                              picked={selected.has(`${row}${cell}`)}
-                              price={prices[tier]} onToggle={onToggle} />
-                      ),
-                    )}
-                  </div>
-                  <span className="row-label row-label--right">{row}</span>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
+        
       </div>
     </div>
   );
