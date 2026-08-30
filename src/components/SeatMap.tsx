@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback, useEffect, useLayoutEffect, useRef, useState,
+} from "react";
 import {
   ROW_IDS, ROW_LAYOUTS, ROW_TIER, TIER_ACCENT, TIER_ROWS,
   MAX_ROW_UNITS, BLOCKED_SEATS, isGap, rowUnits, type TierId,
@@ -14,61 +16,151 @@ interface Props {
   onToggle: (seat: string) => void;
 }
 
-const MIN_SEAT = 18;
-const MAX_SEAT = 46;
+/** Seat size the map is BUILT at. Everything on screen is this, transformed. */
+const BASE_SEAT = 28;
+/** Effective px at which seat numbers become worth drawing. */
+const NUMBER_AT = 19;
+const MAX_ZOOM = 5;
 
 /**
- * The auditorium map.
+ * The auditorium — whole hall on one screen, then pinch to work.
  *
- * ZOOM CHANGES THE SEAT SIZE, NOT A CSS TRANSFORM. That is the whole trick
- * here, and it fixes three things at once:
+ * This is the pattern the big ticketing apps actually use, and I had it wrong
+ * twice before. The mistake was insisting seat NUMBERS stay readable at
+ * overview: that forces a large seat, which forces a map wider than the phone,
+ * which forces side-panning — and panning a hall you cannot see the shape of
+ * feels nothing like a real app.
  *
- *   - `transform: scale()` resamples everything, so seat numbers go blurry the
- *     moment you zoom out. Re-laying out at a smaller seat keeps text crisp.
- *   - A transform creates a containing block, which makes `position: sticky`
- *     latch onto it instead of the scroller — that is why the row letters ended
- *     up floating in the MIDDLE of each row instead of pinned to the left edge.
- *   - Scale-to-fit crushed seats to ~13px on a 390px phone. Below roughly 24px
- *     a target is neither readable nor reliably tappable, so the map now stays
- *     legible and pans sideways instead, which is what every real ticketing
- *     app does.
+ * At overview the numbers are simply not drawn. You see the shape of the house,
+ * which rows are open, and where the gaps are. Numbers fade in once you pinch
+ * past ~19px effective, which is the point they become legible AND tappable.
  *
- * The view also opens centred on the middle of the hall rather than at the far
- * left edge, and keeps that centre anchored while zooming.
+ * Zoom is a transform on a canvas layer, so it is GPU-composited and stays
+ * smooth on a phone. Nothing inside uses `position: sticky` — a transform
+ * creates a containing block and sticky latches onto it, which is exactly why
+ * the row letters previously drifted into the middle of each row.
  */
 export default function SeatMap({ statuses, selected, prices, onToggle }: Props) {
-  const scroller = useRef<HTMLDivElement>(null);
-  const [seat, setSeat] = useState(26);
-  const anchor = useRef<number | null>(null);
+  const viewport = useRef<HTMLDivElement>(null);
+  const canvas = useRef<HTMLDivElement>(null);
 
-  // Start a little larger on a wide screen; a phone keeps the tappable default.
-  useEffect(() => {
-    if (typeof window !== "undefined" && window.innerWidth >= 900) setSeat(32);
-  }, []);
+  const [nat, setNat] = useState({ w: 0, h: 0 });
+  const [fit, setFit] = useState(1);
+  const [k, setK] = useState(1);
+  const [t, setT] = useState({ x: 0, y: 0 });
 
-  const centreOnce = useRef(false);
-  useEffect(() => {
-    const el = scroller.current;
-    if (!el || centreOnce.current || el.scrollWidth <= el.clientWidth) return;
-    el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
-    centreOnce.current = true;
-  }, [seat]);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const gesture = useRef<{ dist: number; k: number; cx: number; cy: number } | null>(null);
+  const dragged = useRef(false);
+  const lastTap = useRef(0);
 
-  // Keep whatever is in the middle of the viewport in the middle after a zoom.
-  const zoom = useCallback((delta: number) => {
-    const el = scroller.current;
-    if (el && el.scrollWidth > 0) {
-      anchor.current = (el.scrollLeft + el.clientWidth / 2) / el.scrollWidth;
-    }
-    setSeat((s) => Math.min(MAX_SEAT, Math.max(MIN_SEAT, s + delta)));
-  }, []);
-
+  // Measure once, untransformed, then fit the hall to the viewport width.
   useLayoutEffect(() => {
-    const el = scroller.current;
-    if (!el || anchor.current === null) return;
-    el.scrollLeft = anchor.current * el.scrollWidth - el.clientWidth / 2;
-    anchor.current = null;
-  }, [seat]);
+    const vp = viewport.current, cv = canvas.current;
+    if (!vp || !cv || nat.w) return;
+    const w = cv.scrollWidth, h = cv.scrollHeight;
+    if (!w || !h) return;
+    setNat({ w, h });
+    const f = (vp.clientWidth - 8) / w;
+    setFit(f); setK(f);
+    setT({ x: (vp.clientWidth - w * f) / 2, y: 0 });
+  }, [nat.w]);
+
+  const clamp = useCallback((nx: number, ny: number, nk: number) => {
+    const vp = viewport.current;
+    if (!vp || !nat.w) return { x: nx, y: ny };
+    const cw = nat.w * nk, ch = nat.h * nk;
+    const vw = vp.clientWidth, vh = vp.clientHeight;
+    return {
+      x: cw <= vw ? (vw - cw) / 2 : Math.min(0, Math.max(vw - cw, nx)),
+      y: ch <= vh ? (vh - ch) / 2 : Math.min(0, Math.max(vh - ch, ny)),
+    };
+  }, [nat]);
+
+  /** Zoom about a point in viewport coordinates, so the pinch stays anchored. */
+  const zoomAt = useCallback((nextK: number, px: number, py: number) => {
+    setK((prev) => {
+      const nk = Math.min(MAX_ZOOM, Math.max(fit, nextK));
+      setT((cur) => clamp(px - (px - cur.x) * (nk / prev),
+                          py - (py - cur.y) * (nk / prev), nk));
+      return nk;
+    });
+  }, [fit, clamp]);
+
+  function onPointerDown(e: React.PointerEvent) {
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    dragged.current = false;
+    if (pointers.current.size === 2) {
+      const [a, b] = [...pointers.current.values()];
+      gesture.current = {
+        dist: Math.hypot(a.x - b.x, a.y - b.y), k,
+        cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2,
+      };
+    }
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    const prev = pointers.current.get(e.pointerId);
+    if (!prev) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const rect = viewport.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    if (pointers.current.size >= 2 && gesture.current) {
+      const [a, b] = [...pointers.current.values()];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      const g = gesture.current;
+      dragged.current = true;
+      zoomAt(g.k * (dist / g.dist), g.cx - rect.left, g.cy - rect.top);
+      return;
+    }
+
+    const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+    // Only claim the gesture once it is clearly a drag, so a tap still reaches
+    // the seat button underneath.
+    if (!dragged.current && Math.hypot(dx, dy) < 5) return;
+    dragged.current = true;
+    setT((cur) => clamp(cur.x + dx, cur.y + dy, k));
+  }
+
+  function onPointerUp(e: React.PointerEvent) {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) gesture.current = null;
+
+    if (!dragged.current) {
+      const now = Date.now();
+      if (now - lastTap.current < 300) {
+        const rect = viewport.current?.getBoundingClientRect();
+        if (rect) {
+          const px = e.clientX - rect.left, py = e.clientY - rect.top;
+          zoomAt(k > fit * 1.6 ? fit : fit * 3, px, py);
+        }
+        lastTap.current = 0;
+      } else {
+        lastTap.current = now;
+      }
+    }
+  }
+
+  function onWheel(e: React.WheelEvent) {
+    const rect = viewport.current?.getBoundingClientRect();
+    if (!rect) return;
+    zoomAt(k * (e.deltaY < 0 ? 1.12 : 0.89),
+           e.clientX - rect.left, e.clientY - rect.top);
+  }
+
+  const detail = k * BASE_SEAT >= NUMBER_AT;
+  const pct = fit ? Math.round((k / fit) * 100) : 100;
+
+  useEffect(() => {
+    const vp = viewport.current;
+    if (!vp) return;
+    // React attaches wheel passively; a non-passive listener is required to
+    // stop the page scrolling while zooming the map.
+    const stop = (ev: WheelEvent) => ev.preventDefault();
+    vp.addEventListener("wheel", stop, { passive: false });
+    return () => vp.removeEventListener("wheel", stop);
+  }, []);
 
   return (
     <div>
@@ -83,20 +175,27 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
           <span><i className="lg-gone" />Booked</span>
         </div>
         <div className="zoomer">
-          <button type="button" onClick={() => zoom(-4)} disabled={seat <= MIN_SEAT}
-                  aria-label="Zoom out">−</button>
-          <span>{Math.round((seat / 26) * 100)}%</span>
-          <button type="button" onClick={() => zoom(4)} disabled={seat >= MAX_SEAT}
-                  aria-label="Zoom in">+</button>
+          <button type="button" aria-label="Zoom out" disabled={k <= fit * 1.01}
+                  onClick={() => { const v = viewport.current; if (v)
+                    zoomAt(k / 1.5, v.clientWidth / 2, v.clientHeight / 2); }}>−</button>
+          <span>{pct}%</span>
+          <button type="button" aria-label="Zoom in" disabled={k >= MAX_ZOOM}
+                  onClick={() => { const v = viewport.current; if (v)
+                    zoomAt(k * 1.5, v.clientWidth / 2, v.clientHeight / 2); }}>+</button>
         </div>
       </div>
 
-      <div className="map-frame">
-        <div className="map-scroll" ref={scroller}>
-          <div className="map-inner"
-               style={{ ["--units" as string]: MAX_ROW_UNITS,
-                        ["--seat" as string]: `${seat}px`,
-                        ["--gutter" as string]: `${Math.max(3, Math.round(seat * 0.16))}px` }}>
+      <div className="map-viewport" ref={viewport}
+           style={{ height: nat.h ? nat.h * fit + 8 : 260 }}
+           onPointerDown={onPointerDown} onPointerMove={onPointerMove}
+           onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+           onWheel={onWheel}>
+        <div ref={canvas}
+             className={`map-canvas${detail ? " detail" : ""}`}
+             style={nat.w
+               ? { transform: `translate3d(${t.x}px, ${t.y}px, 0) scale(${k})` }
+               : undefined}>
+          <div className="map-inner" style={{ ["--units" as string]: MAX_ROW_UNITS }}>
             {ROW_IDS.map((row, i) => {
               const cells = ROW_LAYOUTS[row];
               const tier = ROW_TIER[row];
@@ -119,60 +218,55 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
                     <span className="row-label">{row}</span>
                     <div className="row-seats"
                          style={{ width: `calc(${rowUnits(cells)} * var(--pitch))` }}>
-                      {cells.map((cell, k) =>
+                      {cells.map((cell, c) =>
                         isGap(cell) ? (
-                          <span key={`g${k}`} className="aisle" aria-hidden
+                          <span key={`g${c}`} className="aisle" aria-hidden
                                 style={{ width: `calc(${cell.gap} * var(--pitch))` }} />
                         ) : (
                           <Seat key={`${row}${cell}`} row={row} n={cell} tier={tier}
                                 status={statuses[`${row}${cell}`] ?? AVAILABLE}
                                 picked={selected.has(`${row}${cell}`)}
-                                price={prices[tier]} onToggle={onToggle} />
+                                price={prices[tier]}
+                                onPick={(id) => { if (!dragged.current) onToggle(id); }} />
                         ),
                       )}
                     </div>
-                    <span className="row-label row-label--right">{row}</span>
+                    <span className="row-label">{row}</span>
                   </div>
                 </div>
               );
             })}
           </div>
         </div>
-      </div>
 
-      <p className="map-hint">Swipe the map sideways · pinch or use − / + to resize</p>
+        {!detail && (
+          <p className="map-nudge">Pinch or double-tap to zoom in and pick a seat</p>
+        )}
+      </div>
     </div>
   );
 }
 
-function Seat({ row, n, status, picked, price, tier, onToggle }: {
+function Seat({ row, n, status, picked, price, tier, onPick }: {
   row: string; n: number; status: SeatStatus; picked: boolean;
-  price: number; tier: TierId; onToggle: (s: string) => void;
+  price: number; tier: TierId; onPick: (s: string) => void;
 }) {
   const id = `${row}${n}`;
   const house = BLOCKED_SEATS.has(id);
 
   if (status !== AVAILABLE) {
-    // A span, not a disabled button: unclickable and skipped by keyboard
-    // navigation, so nobody tabs through rows of dead seats.
     return (
       <span className="seat seat--gone" aria-label={`Seat ${id}, unavailable`}
-            title={house ? `${id} · reserved for LTG` : `${id} · sold`}>
-        <svg viewBox="0 0 12 12" aria-hidden>
-          <path d="M2 2 L10 10 M10 2 L2 10" stroke="currentColor"
-                strokeWidth="1.8" strokeLinecap="round" fill="none" />
-        </svg>
-      </span>
+            title={house ? `${id} · reserved for LTG` : `${id} · sold`} />
     );
   }
-
   return (
-    <button type="button" onClick={() => onToggle(id)}
+    <button type="button" onClick={() => onPick(id)}
             className={`seat ${picked ? "seat--sel" : "seat--free"}`}
             aria-pressed={picked}
             aria-label={`Seat ${id}, ${tier}, ₹${price}`}
             title={`${id} · ${tier} · ₹${price.toLocaleString("en-IN")}`}>
-      {n}
+      <b>{n}</b>
     </button>
   );
 }
