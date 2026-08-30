@@ -17,7 +17,7 @@ export default function Home() {
   const [statuses, setStatuses] = useState<Record<string, SeatStatus>>({});
   const [prices, setPrices] = useState<Record<TierId, number>>(DEFAULT_PRICES);
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [form, setForm] = useState({ name: "", phone: "", utr: "" });
+  const [form, setForm] = useState({ name: "", phone: "" });
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -72,7 +72,12 @@ export default function Home() {
     setBusy(true); setErrors([]);
     const data = await fetch("/api/book", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ seats: chosen, ...form }),
+      body: JSON.stringify({ 
+        seats: chosen, 
+        name: form.name, 
+        phone: form.phone, 
+        utr: "PND" + Date.now().toString().slice(-9) 
+      }),
     }).then((r) => r.json());
     setBusy(false);
     if (!data.ok) {
@@ -287,13 +292,21 @@ export default function Home() {
                    placeholder="10 digits, starting 6-9"
                    onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, "") })} />
           </label>
-          <label className="block">
-            <span className="field-label">12-Digit UTR / Transaction ID</span>
-            <input className="field" inputMode="numeric" maxLength={12} value={form.utr}
-                   placeholder="From your UPI payment receipt"
-                   onChange={(e) => setForm({ ...form, utr: e.target.value.replace(/\D/g, "") })} />
-          </label>
         </div>
+
+        {errors.length > 0 && (
+          <ul className="mt-4 space-y-1 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
+            {errors.map((e) => <li key={e}>• {e}</li>)}
+          </ul>
+        )}
+
+        <button className="btn-gold mt-5 w-full" disabled={busy} onClick={submit}>
+          {busy ? "SUBMITTING…" : "SUBMIT FOR VERIFICATION"}
+        </button>
+        <button className="btn-ghost mt-3 w-full" onClick={() => setStep(2)}>
+          Change seats
+        </button>
+      </div>
 
         {errors.length > 0 && (
           <ul className="mt-4 space-y-1 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
