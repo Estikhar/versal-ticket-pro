@@ -17,37 +17,27 @@ interface Props {
 export default function SeatMap({ statuses, selected, prices, onToggle }: Props) {
   const [isZoomed, setIsZoomed] = useState(false);
   const [scale, setScale] = useState(1);
-  const [wrapperHeight, setWrapperHeight] = useState<string>("auto");
 
   const containerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function updateScale() {
-      if (!containerRef.current || !innerRef.current) return;
+      if (!containerRef.current || !innerRef.current || isZoomed) return;
       
-      if (isZoomed) {
-        setScale(1);
-        setWrapperHeight("auto");
-        return;
-      }
-
-      // Temporarily remove scale to measure true width
-      innerRef.current.style.transform = "scale(1)";
+      // Original size naapne ke liye scale temporary hata dein
+      innerRef.current.style.transform = "none";
       
-      // Container ki width minus padding (16px)
-      const availableWidth = containerRef.current.clientWidth - 16; 
-      const requiredWidth = innerRef.current.scrollWidth;
-      const requiredHeight = innerRef.current.scrollHeight;
+      const cWidth = containerRef.current.clientWidth;
+      const cHeight = containerRef.current.clientHeight;
+      const mWidth = innerRef.current.offsetWidth;
+      const mHeight = innerRef.current.offsetHeight;
 
-      if (requiredWidth > availableWidth && availableWidth > 0) {
-        // Pure 100% width ka use karega
-        const newScale = availableWidth / requiredWidth;
-        setScale(newScale);
-        setWrapperHeight(`${requiredHeight * newScale}px`);
-      } else {
-        setScale(1);
-        setWrapperHeight("auto");
+      if (cWidth > 0 && mWidth > 0) {
+        // Width aur Height dono ko check karke perfect scale nikalenge
+        const scaleX = (cWidth * 0.95) / mWidth; // 95% taaki thodi padding bachi rahe
+        const scaleY = (cHeight * 0.95) / mHeight;
+        setScale(Math.min(scaleX, scaleY)); // Jo chota hoga wo apply hoga, jisse map kabhi katega nahi
       }
     }
 
@@ -61,51 +51,52 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
 
   return (
     <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', minHeight: '38px' }}>
+      
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', minHeight: '32px' }}>
         <div className="legend" style={{ margin: 0 }}>
           <span><i className="lg-free" />Available</span>
           <span><i className="lg-sel" />Selected</span>
           <span><i className="lg-gone" />Booked</span>
         </div>
-        
+      </div>
+
+      {/* Main Container - Ab yeh poora empty space cover karega (60vh height) */}
+      <div 
+        style={{
+          position: 'relative',
+          width: '100%',
+          height: '60vh', // Mobile ki height ka 60% hissa cover karega
+          minHeight: '400px',
+          maxHeight: '600px',
+          background: 'rgba(255, 255, 255, 0.02)',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          borderRadius: '16px',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Floating Reset Button - Hamesha container ke andar bottom-right me rahega */}
         {isZoomed && (
           <button 
             type="button" 
             onClick={() => setIsZoomed(false)}
             style={{ 
-              fontSize: '0.85rem', padding: '0.5rem 1rem', borderRadius: '8px', 
+              position: 'absolute', bottom: '16px', right: '16px', zIndex: 50,
+              fontSize: '0.9rem', padding: '0.6rem 1.2rem', borderRadius: '12px', 
               background: '#F0A93B', color: '#090b10', border: 'none',
-              fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 12px rgba(240, 169, 59, 0.3)'
+              fontWeight: '800', cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,0.8)'
             }}
           >
             🔍 Reset View
           </button>
         )}
-      </div>
 
-      <div 
-        ref={containerRef}
-        className="map-scroll"
-        style={{
-          position: 'relative',
-          width: '100%',
-          overflowX: isZoomed ? 'auto' : 'hidden',
-          overflowY: 'hidden',
-          background: 'rgba(255, 255, 255, 0.02)',
-          border: '1px solid rgba(255, 255, 255, 0.06)',
-          borderRadius: '16px',
-          padding: '8px', // Outer padding fixed
-          height: isZoomed ? 'auto' : wrapperHeight,
-          transition: 'height 0.25s ease-out',
-          touchAction: isZoomed ? 'auto' : 'pan-y',
-        }}
-      >
+        {/* Click to Zoom Overlay */}
         {!isZoomed && (
           <div 
             onClick={() => setIsZoomed(true)}
             style={{
               position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-              zIndex: 20, cursor: 'zoom-in', width: '100%',
+              zIndex: 20, cursor: 'zoom-in', width: '100%', height: '100%',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
           >
@@ -120,17 +111,28 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
           </div>
         )}
 
-        <div style={{ display: 'flex', justifyContent: isZoomed ? 'flex-start' : 'center', width: '100%' }}>
+        {/* Actual Scrollable Area */}
+        <div 
+          ref={containerRef}
+          className="map-scroll"
+          style={{
+            width: '100%',
+            height: '100%',
+            overflow: isZoomed ? 'auto' : 'hidden',
+            display: 'flex',
+            alignItems: isZoomed ? 'flex-start' : 'center',
+            justifyContent: isZoomed ? 'flex-start' : 'center',
+            touchAction: isZoomed ? 'auto' : 'none',
+          }}
+        >
           <div 
             ref={innerRef}
             style={{
-              transform: `scale(${scale})`,
-              transformOrigin: 'top center',
+              transform: isZoomed ? 'scale(1)' : `scale(${scale})`,
+              transformOrigin: 'center',
               width: 'max-content',
               transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-              willChange: 'transform',
-              padding: isZoomed ? '1rem' : '0', // Zoom mode me padding wapas aayegi
-              paddingTop: '0.5rem'
+              padding: isZoomed ? '24px' : '0' // Zoom karne par corners pe chipkega nahi
             }}
           >
             <div className="stage-wrap" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'center' }}>
@@ -157,8 +159,13 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
                       </div>
                     )}
                     <div className="seat-row"
-                         style={{ ["--tier-accent" as string]: TIER_ACCENT[tier] }}>
-                      <span className="row-label">{row}</span>
+                         style={{ ["--tier-accent" as string]: TIER_ACCENT[tier], position: 'relative' }}>
+                      
+                      {/* FIXED: A B C D Row Labels ab Sticky hain (scroll karne par nahi chupenge) */}
+                      <span className="row-label" style={{ position: 'sticky', left: 0, zIndex: 10, background: '#090b10', padding: '0 4px', borderRadius: '4px' }}>
+                        {row}
+                      </span>
+                      
                       <div className="row-seats"
                            style={{ width: `calc(${rowUnits(cells)} * var(--pitch))` }}>
                         {cells.map((cell, i) =>
@@ -173,7 +180,11 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
                           ),
                         )}
                       </div>
-                      <span className="row-label row-label--right">{row}</span>
+                      
+                      <span className="row-label row-label--right" style={{ position: 'sticky', right: 0, zIndex: 10, background: '#090b10', padding: '0 4px', borderRadius: '4px' }}>
+                        {row}
+                      </span>
+                      
                     </div>
                   </div>
                 );
