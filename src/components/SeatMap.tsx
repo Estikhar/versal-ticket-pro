@@ -15,7 +15,6 @@ interface Props {
 }
 
 export default function SeatMap({ statuses, selected, prices, onToggle }: Props) {
-  // Map initially fit-to-screen rahega
   const [fitMap, setFitMap] = useState(true);
   const [scale, setScale] = useState(1);
   const [mapHeight, setMapHeight] = useState<string>('auto');
@@ -64,7 +63,6 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
           <span><i className="lg-gone" />Booked</span>
         </div>
         
-        {/* Zoom out button sirf tab dikhega jab map scrollable ho */}
         {!fitMap && (
           <button 
             type="button" 
@@ -86,23 +84,27 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
           height: mapHeight,
           transition: 'height 0.2s ease',
           width: '100%',
-          position: 'relative'
+          position: 'relative',
+          backgroundColor: '#ffffff', /* Seat section ka background White */
+          color: '#000000',           /* Text Black taaki white par saaf dikhe */
+          borderRadius: '12px',
+          padding: '1rem 0'
         }}
       >
-        {/* Clickable Overlay: Jab fitMap true ho, tap karne par map zoom ho jayega */}
         {fitMap && (
           <div 
             onClick={() => setFitMap(false)}
             style={{
               position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
               zIndex: 20, cursor: 'zoom-in', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'rgba(9, 11, 16, 0.3)', borderRadius: '12px'
+              background: 'rgba(255, 255, 255, 0.6)', /* Light white transparent overlay */
+              borderRadius: '12px'
             }}
           >
             <div style={{
               background: '#F0A93B', color: '#000', padding: '8px 16px',
               borderRadius: '20px', fontWeight: 700, fontSize: '0.9rem',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
             }}>
               Tap map to zoom & select
             </div>
