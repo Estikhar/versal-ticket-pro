@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Header, Footer, Stepper } from "@/components/Chrome";
 import Link from "next/link";
 import SeatMap from "@/components/SeatMap";
 import { Header, Stepper } from "@/components/Chrome";
