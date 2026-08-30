@@ -16,53 +16,48 @@ interface Props {
 
 export default function SeatMap({ statuses, selected, prices, onToggle }: Props) {
   const [isZoomed, setIsZoomed] = useState(false);
-  const [scale, setScale] = useState(1);
-  const [mapDims, setMapDims] = useState({ w: 0, h: 0 });
-  const [ready, setReady] = useState(false);
+  const [fitScale, setFitScale] = useState(1);
+  const [fitHeight, setFitHeight] = useState(300); // Default height before calculation
 
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
 
+  // Yeh logic map ke shrink hone par uski perfect height calculate karega taaki neeche khali jagah na bache
   useEffect(() => {
-    function measureMap() {
-      if (!mapRef.current || !containerRef.current) return;
-
-      // Sahi size measure karne ke liye scale temporary hatayein
-      const oldTransform = mapRef.current.style.transform;
-      mapRef.current.style.transform = "none";
-
-      const w = mapRef.current.scrollWidth;
-      const h = mapRef.current.scrollHeight;
-      const cWidth = containerRef.current.clientWidth;
-
-      mapRef.current.style.transform = oldTransform; // Wapas apply karein
-
-      if (w > 0 && cWidth > 0) {
-        setMapDims({ w, h });
-        // Screen ki width me se halki padding (16px) minus ki hai
-        const availableWidth = cWidth - 16; 
-        if (w > availableWidth) {
-          setScale(availableWidth / w);
-        } else {
-          setScale(1);
-        }
-        setReady(true);
+    function calculateSize() {
+      if (!wrapperRef.current || !mapRef.current) return;
+      
+      // Original size naapne ke liye temporarily scale hatana zaroori hai
+      const prevTransform = mapRef.current.style.transform;
+      mapRef.current.style.transform = 'none';
+      
+      const containerWidth = wrapperRef.current.clientWidth;
+      const actualMapWidth = mapRef.current.scrollWidth;
+      const actualMapHeight = mapRef.current.scrollHeight;
+      
+      mapRef.current.style.transform = prevTransform;
+      
+      if (actualMapWidth > 0 && containerWidth > 0) {
+        const scaleValue = containerWidth / actualMapWidth;
+        setFitScale(scaleValue);
+        // Map jitna shrink hua hai, container ki height bhi theek utni hi set hogi
+        setFitHeight(actualMapHeight * scaleValue);
       }
     }
-
-    // Load hone par aur screen size change hone par calculate karega
-    const t = setTimeout(measureMap, 50);
-    window.addEventListener("resize", measureMap);
+    
+    // Page load hote hi aur screen rotate hone par run hoga
+    const timeoutId = setTimeout(calculateSize, 10);
+    window.addEventListener('resize', calculateSize);
     return () => {
-      clearTimeout(t);
-      window.removeEventListener("resize", measureMap);
+      clearTimeout(timeoutId);
+      window.removeEventListener('resize', calculateSize);
     };
   }, []);
 
   return (
-    <div style={{ width: "100%", opacity: ready ? 1 : 0, transition: "opacity 0.2s ease" }}>
+    <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
       
-      {/* Top Header: Legend aur Reset Button */}
+      {/* Top Header: Legend & Reset Button */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', minHeight: '36px' }}>
         <div className="legend" style={{ margin: 0 }}>
           <span><i className="lg-free" />Available</span>
@@ -70,7 +65,7 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
           <span><i className="lg-gone" />Booked</span>
         </div>
         
-        {/* Reset View ab upar aayega taaki seats ko disturb na kare */}
+        {/* Reset View Button ab theek Available/Booked ke samne hoga, taaki map ke upar na aaye */}
         {isZoomed && (
           <button 
             type="button" 
@@ -86,23 +81,24 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
         )}
       </div>
 
-      {/* Main Map Scroll Container */}
+      {/* Main Container Box */}
       <div 
-        ref={containerRef}
+        ref={wrapperRef}
         className="map-scroll"
         style={{
           position: 'relative',
           width: '100%',
-          maxHeight: isZoomed ? '65vh' : 'none', // Zoom hone par scroll box banega
+          // Yahan Magic Fix hai: Zoom out par perfect height, aur Zoom In par scrollable 65vh height
+          height: isZoomed ? '65vh' : `${fitHeight}px`, 
           overflow: isZoomed ? 'auto' : 'hidden',
           background: 'rgba(255, 255, 255, 0.02)',
           border: '1px solid rgba(255, 255, 255, 0.06)',
           borderRadius: '16px',
-          padding: isZoomed ? '24px' : '8px',
-          touchAction: isZoomed ? 'auto' : 'none', // Fit view me up/down scroll block nai karega
+          transition: 'height 0.3s ease',
+          touchAction: isZoomed ? 'auto' : 'pan-y'
         }}
       >
-        {/* Overlay Pulse Button */}
+        {/* Tap to Zoom Overlay */}
         {!isZoomed && (
           <div 
             onClick={() => setIsZoomed(true)}
@@ -116,76 +112,74 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
               background: '#F0A93B', color: '#090b10', padding: '14px 28px',
               borderRadius: '30px', fontWeight: 800, fontSize: '1rem',
               boxShadow: '0 10px 30px rgba(0,0,0,0.9)',
-              textAlign: 'center'
             }}>
               Tap map to zoom & select
             </div>
           </div>
         )}
 
-        {/* Height Adjuster - Extra khali space ko fix karta hai */}
+        {/* The Actual Map */}
         <div 
+          ref={mapRef}
           style={{
-            width: isZoomed ? 'auto' : (mapDims.w > 0 ? mapDims.w * scale : 'auto'),
-            height: isZoomed ? 'auto' : (mapDims.h > 0 ? mapDims.h * scale : 'auto'),
-            margin: '0 auto',
+            transform: isZoomed ? 'scale(1)' : `scale(${fitScale})`,
+            transformOrigin: 'top left',
+            width: 'max-content',
+            transition: 'transform 0.3s ease',
+            padding: isZoomed ? '24px' : '0' // Zoom hone par kinare screen se na chipke, isliye halki padding
           }}
         >
-          {/* Actual Map Content */}
-          <div 
-            ref={mapRef}
-            style={{
-              transform: isZoomed ? 'none' : `scale(${scale})`,
-              transformOrigin: 'top left',
-              width: 'max-content',
-            }}
-          >
-            <div className="stage-wrap" style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'center' }}>
-              <div className="stage"><span>STAGE</span></div>
-            </div>
+          {/* Stage */}
+          <div className="stage-wrap" style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'center' }}>
+            <div className="stage"><span>STAGE</span></div>
+          </div>
 
-            <div className="map-inner" style={{ ["--units" as string]: MAX_ROW_UNITS }}>
-              {ROW_IDS.map((row, i) => {
-                const cells = ROW_LAYOUTS[row];
-                const tier = ROW_TIER[row];
-                const bandHere = i === 0 || ROW_TIER[ROW_IDS[i - 1]] !== tier;
-                
-                return (
-                  <div key={row} className="contents">
-                    {bandHere && (
-                      <div className="tier-band"
-                           style={{ ["--tier-accent" as string]: TIER_ACCENT[tier] }}>
-                        <span className="tier-band__line" />
-                        <span className="tier-band__text">
-                          {tier} · ₹{prices[tier].toLocaleString("en-IN")}
-                          <em>{TIER_ROWS[tier]}</em>
-                        </span>
-                        <span className="tier-band__line" />
-                      </div>
-                    )}
-                    <div className="seat-row"
+          <div className="map-inner" style={{ ["--units" as string]: MAX_ROW_UNITS }}>
+            {ROW_IDS.map((row, i) => {
+              const cells = ROW_LAYOUTS[row];
+              const tier = ROW_TIER[row];
+              const bandHere = i === 0 || ROW_TIER[ROW_IDS[i - 1]] !== tier;
+              
+              return (
+                <div key={row} className="contents">
+                  {bandHere && (
+                    <div className="tier-band"
                          style={{ ["--tier-accent" as string]: TIER_ACCENT[tier] }}>
-                      <span className="row-label">{row}</span>
-                      <div className="row-seats"
-                           style={{ width: `calc(${rowUnits(cells)} * var(--pitch))` }}>
-                        {cells.map((cell, i) =>
-                          isGap(cell) ? (
-                            <span key={`g${i}`} className="aisle" aria-hidden
-                                  style={{ width: `calc(${cell.gap} * var(--pitch))` }} />
-                          ) : (
-                            <Seat key={`${row}${cell}`} row={row} n={cell} tier={tier}
-                                  status={statuses[`${row}${cell}`] ?? AVAILABLE}
-                                  picked={selected.has(`${row}${cell}`)}
-                                  price={prices[tier]} onToggle={onToggle} />
-                          ),
-                        )}
-                      </div>
-                      <span className="row-label row-label--right">{row}</span>
+                      <span className="tier-band__line" />
+                      <span className="tier-band__text">
+                        {tier} · ₹{prices[tier].toLocaleString("en-IN")}
+                        <em>{TIER_ROWS[tier]}</em>
+                      </span>
+                      <span className="tier-band__line" />
                     </div>
+                  )}
+                  <div className="seat-row"
+                       style={{ ["--tier-accent" as string]: TIER_ACCENT[tier] }}>
+                    
+                    {/* Yahan se sticky position aur custom backgrounds hata diye gaye hain taaki overlaps na hon */}
+                    <span className="row-label">{row}</span>
+                    
+                    <div className="row-seats"
+                         style={{ width: `calc(${rowUnits(cells)} * var(--pitch))` }}>
+                      {cells.map((cell, i) =>
+                        isGap(cell) ? (
+                          <span key={`g${i}`} className="aisle" aria-hidden
+                                style={{ width: `calc(${cell.gap} * var(--pitch))` }} />
+                        ) : (
+                          <Seat key={`${row}${cell}`} row={row} n={cell} tier={tier}
+                                status={statuses[`${row}${cell}`] ?? AVAILABLE}
+                                picked={selected.has(`${row}${cell}`)}
+                                price={prices[tier]} onToggle={onToggle} />
+                        ),
+                      )}
+                    </div>
+                    
+                    <span className="row-label row-label--right">{row}</span>
+                    
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
