@@ -91,10 +91,22 @@ body {
    stays aligned on the centre axis. Per-row scrolling would let rows drift
    out of register, which destroys the sense of a physical auditorium.
    ========================================================================= */
+/* The frame carries the edge fades; the scroller inside does the panning.
+   Fades are the affordance that tells you the hall continues off-screen. */
+.map-frame { position: relative; }
+.map-frame::before, .map-frame::after {
+  content: ""; position: absolute; top: 0; bottom: 10px; width: 26px;
+  pointer-events: none; z-index: 3;
+}
+.map-frame::before { left: 0;
+  background: linear-gradient(90deg, var(--ink), transparent); }
+.map-frame::after { right: 0;
+  background: linear-gradient(270deg, var(--ink), transparent); }
+
 .map-scroll {
   overflow-x: auto; overflow-y: hidden; white-space: nowrap;
-  -webkit-overflow-scrolling: touch;
-  padding: .4rem 0 1rem; margin: 0 -.35rem;
+  -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+  padding: .4rem 0 .8rem;
   scrollbar-width: thin; scrollbar-color: rgba(212,175,55,.32) transparent;
 }
 .map-scroll::-webkit-scrollbar { height: 6px; }
@@ -102,16 +114,14 @@ body {
   background: rgba(212,175,55,.32); border-radius: 4px;
 }
 .map-inner {
-  /* Pitch = seat + margin. Gaps are N x pitch, so every block lands on the
-     same grid and rows stack in register at any breakpoint. */
-  --seat: 30px; --gutter: 5px; --pitch: calc(var(--seat) + var(--gutter));
-  --label: 26px;
-  min-width: calc(var(--units) * var(--pitch) + 2 * var(--label) + 48px);
+  /* --seat and --gutter are set by the component so zoom re-lays out at native
+     crispness. Pitch = seat + gutter, and gaps are N x pitch, so every block
+     stays on the same grid at any zoom level. */
+  --pitch: calc(var(--seat) + var(--gutter));
+  --label: calc(var(--seat) * 0.9);
+  min-width: calc(var(--units) * var(--pitch) + 2 * var(--label) + 28px);
   display: flex; flex-direction: column; gap: var(--gutter);
-  padding: 0 .35rem;
-}
-@media (max-width: 640px) {
-  .map-inner { --seat: 23px; --gutter: 4px; --label: 20px; }
+  padding: 0 .4rem;
 }
 
 /* glowing curved stage */
@@ -146,11 +156,12 @@ body {
                       letter-spacing: .16em; color: rgba(232,234,240,.38); }
 .row-label {
   flex: 0 0 var(--label); width: var(--label); text-align: center;
-  font-size: .64rem; font-weight: 900; color: var(--tier-accent, var(--muted));
+  font-size: calc(var(--seat) * 0.42); font-weight: 900;
+  color: var(--tier-accent, var(--muted));
   position: sticky; left: 0; z-index: 2;
-  background: linear-gradient(90deg, var(--ink) 60%, transparent);
+  background: var(--ink); border-radius: 5px;
 }
-.row-label--right { position: static; background: none; }
+.row-label--right { position: sticky; left: auto; right: 0; }
 /* Every row is centred on the hall axis, exactly as printed on the plan. */
 .row-seats { display: flex; align-items: center; margin: 0 auto; }
 .aisle { flex: 0 0 auto; }  /* invisible spacer — the gangway */
@@ -158,7 +169,8 @@ body {
 .seat {
   flex: 0 0 var(--seat); width: var(--seat); height: var(--seat);
   margin-right: var(--gutter);
-  border-radius: 7px; font-size: .58rem; font-weight: 800;
+  border-radius: calc(var(--seat) * 0.24);
+  font-size: calc(var(--seat) * 0.4); font-weight: 800;
   display: flex; align-items: center; justify-content: center;
   transition: transform .09s ease, box-shadow .2s ease, background-color .2s ease;
 }
@@ -309,6 +321,8 @@ body {
                 color: var(--amber); }
 .qr-missing span { font-size: .66rem; line-height: 1.6; color: var(--muted); }
 
+/* Header / footer artwork from public/. Width-constrained, aspect preserved,
+   so any size image you drop in behaves. */
 .banner {
   display: block; width: 100%; height: auto; border-radius: 18px;
   margin-bottom: 1rem; border: 1px solid rgba(212,175,55,.22);
@@ -316,3 +330,27 @@ body {
 }
 .pagefoot { margin-top: 2rem; text-align: center; }
 .pagefoot .banner { margin-bottom: .8rem; }
+
+.ticket-skeleton {
+  width: 100%; aspect-ratio: 1200 / 450; border-radius: 18px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .72rem; letter-spacing: .2em; color: var(--muted);
+  border: 1px dashed rgba(212,175,55,.35); background: rgba(212,175,55,.05);
+}
+
+/* Legend + zoom control sit on one line above the map. */
+.map-bar { display: flex; align-items: center; justify-content: space-between;
+           gap: 1rem; flex-wrap: wrap; margin-bottom: .5rem; }
+.map-bar .legend { margin: 0; justify-content: flex-start; }
+.zoomer { display: inline-flex; align-items: center; gap: .1rem;
+          border: 1px solid rgba(212,175,55,.3); border-radius: 10px;
+          background: rgba(212,175,55,.06); overflow: hidden; }
+.zoomer button { width: 36px; height: 32px; font-size: 1.1rem; font-weight: 900;
+                 color: var(--gold-hi); background: transparent; border: none; }
+.zoomer button:disabled { opacity: .3; }
+.zoomer button:active:not(:disabled) { background: rgba(212,175,55,.18); }
+.zoomer span { min-width: 46px; text-align: center; font-size: .62rem;
+               font-weight: 800; letter-spacing: .06em; color: var(--muted);
+               font-variant-numeric: tabular-nums; }
+.map-hint { margin-top: .5rem; text-align: center; font-size: .6rem;
+            letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
