@@ -7,20 +7,24 @@
  * "tidy" these: they mirror the printed plan.
  */
 /**
- * A row is a sequence of seat numbers and GAPS, where a gap is measured in
- * SEAT-PITCH UNITS. Measuring gaps in units (not pixels) is what makes the
- * blocks line up vertically the way they do on the printed plan.
+ * Row geometry, MEASURED off the blueprint — not estimated.
  *
- * Read straight off the PDF (block counts verified against the text layer):
- *   A-J   {11..20} left · {1..10} right            10 rows x 20 seats
- *   K, P  {8..14}  left · {1..7}   right            2 rows x 14 seats
- *   L-O   {12..18} left · {8..11} centre · {1..7}   4 rows x 18 seats
- *   Q     {1..27}, ONE continuous row               1 row  x 27 seats
+ * Seat boxes are 50px and the seat pitch is 60px on the plan, so every gap
+ * below is expressed in PITCH UNITS (1 unit = one seat step). Measured values:
  *
- * The centre gap on K and P is 6 units wide — exactly gap(1) + 4 centre seats
- * + gap(1) — so K8 sits directly above L12 and K7 above L7. That is the
- * stairwell void on the plan, and it is why K and P look narrower than L-O
- * while their side blocks stay in register.
+ *   front rows   [10] <3.3> [10]                         = 23.3 units
+ *   K and P      [7]  <14.2> [7]                          = 28.2 units
+ *   L-O          [7] <2.3> [2] <5.6> [2] <2.3> [7]        = 28.2 units
+ *   Q            [27] continuous                          = 27.0 units
+ *
+ * Three things this corrects:
+ *   1. The REAR IS WIDER THAN THE FRONT (28.2 vs 23.3). The earlier model had
+ *      it narrower, which is why the hall looked wrong.
+ *   2. The centre block on L-O is TWO PAIRS, not four seats in a run: the
+ *      stairwell sits between 10 and 9, exactly as the PDF prints "11 10" and
+ *      "9 8" as separate items.
+ *   3. K and P's void is 14.2 units — precisely a+2+b+2+a — so their side
+ *      blocks land in register with L-O's.
  */
 export type Gap = { gap: number };
 export type Cell = number | Gap;
@@ -34,18 +38,30 @@ const seats = (from: number, to: number): number[] => {
   return out;
 };
 
-/** A-J: left 20->11 | centre aisle | right 10->1  = 21 units */
-const FRONT: Cell[] = [...seats(11, 20), { gap: 1 }, ...seats(1, 10)];
+/** Measured gap widths, in seat-pitch units. */
+const AISLE_FRONT = 3.3;   // centre aisle, rows A-J
+const AISLE_REAR  = 2.3;   // between side block and centre pair, rows L-O
+const STAIRWELL   = 5.6;   // between the two centre pairs, rows L-O
+const VOID_KP     = AISLE_REAR * 2 + STAIRWELL + 4;  // 14.2 — the whole centre
 
-/** K, P: left 14->8 | stairwell void | right 7->1 = 20 units */
-const REAR_SIDE: Cell[] = [...seats(8, 14), { gap: 6 }, ...seats(1, 7)];
-
-/** L-O: left 18->12 | aisle | centre 11->8 | aisle | right 7->1 = 20 units */
-const REAR_MID: Cell[] = [
-  ...seats(12, 18), { gap: 1 }, ...seats(8, 11), { gap: 1 }, ...seats(1, 7),
+/** A-J: left 20->11 | aisle | right 10->1 */
+const FRONT: Cell[] = [
+  ...seats(11, 20), { gap: AISLE_FRONT }, ...seats(1, 10),
 ];
 
-/** Q: one unbroken rear row, 27->1 = 27 units. The PDF prints no gap here. */
+/** K, P: left 14->8 | stairwell void | right 7->1 */
+const REAR_SIDE: Cell[] = [
+  ...seats(8, 14), { gap: VOID_KP }, ...seats(1, 7),
+];
+
+/** L-O: left 18->12 | aisle | 11 10 | stairwell | 9 8 | aisle | right 7->1 */
+const REAR_MID: Cell[] = [
+  ...seats(12, 18), { gap: AISLE_REAR },
+  ...seats(10, 11), { gap: STAIRWELL }, ...seats(8, 9),
+  { gap: AISLE_REAR }, ...seats(1, 7),
+];
+
+/** Q: one unbroken rear row, 27->1. The PDF prints no gap here. */
 const REAR_BACK: Cell[] = seats(1, 27);
 
 export const ROW_LAYOUTS: Record<string, Cell[]> = {
@@ -57,7 +73,7 @@ export const ROW_LAYOUTS: Record<string, Cell[]> = {
   Q: REAR_BACK,
 };
 
-/** Total width of a row in seat-pitch units — drives centring and min-width. */
+/** Total width of a row in seat-pitch units. */
 export const rowUnits = (cells: Cell[]): number =>
   cells.reduce<number>((n, c) => n + (isGap(c) ? c.gap : 1), 0);
 

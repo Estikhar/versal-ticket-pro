@@ -20,9 +20,17 @@ export async function POST(req: Request) {
   if (!UTR.test(utr)) errors.push("UTR / Transaction ID must be exactly 12 digits.");
   if (errors.length) return NextResponse.json({ ok: false, errors }, { status: 400 });
 
-  const result = await reserveMultipleSeats(seats, name, phone, utr);
-  return NextResponse.json(
-    { ok: result.ok, message: result.message, errors: result.ok ? [] : [result.message] },
-    { status: result.ok ? 200 : 409 },
-  );
+  try {
+    const result = await reserveMultipleSeats(seats, name, phone, utr);
+    return NextResponse.json(
+      { ok: result.ok, message: result.message, errors: result.ok ? [] : [result.message] },
+      { status: result.ok ? 200 : 409 },
+    );
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : "unknown error";
+    return NextResponse.json(
+      { ok: false, errors: [`${detail} — no seats were taken and nothing was charged.`] },
+      { status: 503 },
+    );
+  }
 }

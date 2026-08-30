@@ -106,7 +106,7 @@ body {
      same grid and rows stack in register at any breakpoint. */
   --seat: 30px; --gutter: 5px; --pitch: calc(var(--seat) + var(--gutter));
   --label: 26px;
-  min-width: calc(var(--units) * var(--pitch) + 2 * var(--label) + 20px);
+  min-width: calc(var(--units) * var(--pitch) + 2 * var(--label) + 48px);
   display: flex; flex-direction: column; gap: var(--gutter);
   padding: 0 .35rem;
 }
@@ -131,6 +131,19 @@ body {
 }
 
 .seat-row { display: flex; align-items: center; }
+
+/* Price band, printed wherever the tier changes. */
+.tier-band { display: flex; align-items: center; gap: .7rem;
+             margin: .85rem 0 .35rem; padding: 0 var(--label); }
+.tier-band__line { flex: 1; height: 1px;
+                   background: linear-gradient(90deg, transparent,
+                     color-mix(in srgb, var(--tier-accent) 55%, transparent)); }
+.tier-band__line:last-child { transform: scaleX(-1); }
+.tier-band__text { display: inline-flex; align-items: baseline; gap: .55rem;
+                   white-space: nowrap; font-size: .72rem; font-weight: 900;
+                   letter-spacing: .12em; color: var(--tier-accent); }
+.tier-band__text em { font-style: normal; font-size: .56rem; font-weight: 700;
+                      letter-spacing: .16em; color: rgba(232,234,240,.38); }
 .row-label {
   flex: 0 0 var(--label); width: var(--label); text-align: center;
   font-size: .64rem; font-weight: 900; color: var(--tier-accent, var(--muted));
@@ -267,3 +280,31 @@ body {
 
 @media (max-width: 640px) { .card { padding: 1.1rem 1rem; border-radius: 17px; } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* "Already booked" — green so it reads as a different job from buying. */
+.dl-link {
+  display: block; margin-top: 1rem; padding: .8rem 1rem; border-radius: 13px;
+  text-align: center; font-size: .7rem; font-weight: 900; letter-spacing: .18em;
+  color: #A8FFC8; text-decoration: none;
+  border: 1px solid rgba(52,208,122,.55);
+  background: linear-gradient(135deg, rgba(52,208,122,.16), rgba(52,208,122,.05));
+  box-shadow: 0 0 14px rgba(52,208,122,.28), inset 0 0 12px rgba(52,208,122,.10);
+  animation: dlPulse 2.8s ease-in-out infinite;
+}
+.dl-link:hover { color: #061; background: linear-gradient(135deg,#7CFFB0,#34D07A);
+                 border-color: transparent;
+                 box-shadow: 0 0 26px rgba(52,208,122,.75); }
+@keyframes dlPulse {
+  0%,100% { box-shadow: 0 0 14px rgba(52,208,122,.28), inset 0 0 12px rgba(52,208,122,.10); }
+  50%     { box-shadow: 0 0 26px rgba(52,208,122,.55), inset 0 0 16px rgba(52,208,122,.18); }
+}
+
+.qr-missing {
+  flex: 0 0 230px; width: 230px; height: 230px; border-radius: 16px;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: .5rem; text-align: center; padding: 1rem;
+  border: 1px dashed rgba(240,169,59,.55); background: rgba(240,169,59,.07);
+}
+.qr-missing b { font-size: .74rem; font-weight: 900; letter-spacing: .12em;
+                color: var(--amber); }
+.qr-missing span { font-size: .66rem; line-height: 1.6; color: var(--muted); }

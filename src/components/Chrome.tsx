@@ -25,8 +25,7 @@ export function Header() {
           </a>
         )}
       </div>
-      <Link href="/tickets"
-        className="mt-4 block rounded-xl border border-[#D4AF37]/30 bg-[#D4AF37]/10 py-2.5 text-center text-[11px] font-black tracking-[0.18em] text-[#FFF2CD]">
+      <Link href="/tickets" className="dl-link">
         ALREADY BOOKED? DOWNLOAD YOUR TICKETS →
       </Link>
     </div>

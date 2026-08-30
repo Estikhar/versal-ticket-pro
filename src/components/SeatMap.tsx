@@ -39,18 +39,6 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
         <div className="stage"><span>STAGE</span></div>
       </div>
 
-      {/* Prices ride in the legend now that the categories card is gone —
-          a buyer still needs to know what a row costs before tapping it. */}
-      <div className="legend">
-        {TIER_ORDER.map((t) => (
-          <span key={t} title={TIER_ROWS[t]}>
-            <i style={{ background: `${TIER_ACCENT[t]}33`,
-                        border: `1px solid ${TIER_ACCENT[t]}` }} />
-            <b style={{ color: TIER_ACCENT[t], fontWeight: 900 }}>{t}</b>
-            &nbsp;₹{prices[t].toLocaleString("en-IN")}
-          </span>
-        ))}
-      </div>
       <div className="legend">
         <span><i className="lg-free" />Available</span>
         <span><i className="lg-sel" />Selected</span>
@@ -59,11 +47,26 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
 
       <div className="map-scroll">
         <div className="map-inner" style={{ ["--units" as string]: MAX_ROW_UNITS }}>
-          {ROW_IDS.map((row) => {
+          {ROW_IDS.map((row, i) => {
             const cells = ROW_LAYOUTS[row];
             const tier = ROW_TIER[row];
+            // A price band wherever the tier changes, so the cost is stated
+            // right where it starts applying instead of in a distant legend.
+            const bandHere = i === 0 || ROW_TIER[ROW_IDS[i - 1]] !== tier;
             return (
-              <div key={row} className="seat-row"
+              <div key={row} className="contents">
+              {bandHere && (
+                <div className="tier-band"
+                     style={{ ["--tier-accent" as string]: TIER_ACCENT[tier] }}>
+                  <span className="tier-band__line" />
+                  <span className="tier-band__text">
+                    {tier} · ₹{prices[tier].toLocaleString("en-IN")}
+                    <em>{TIER_ROWS[tier]}</em>
+                  </span>
+                  <span className="tier-band__line" />
+                </div>
+              )}
+              <div className="seat-row"
                    style={{ ["--tier-accent" as string]: TIER_ACCENT[tier] }}>
                 <span className="row-label">{row}</span>
                 <div className="row-seats"
@@ -81,6 +84,7 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
                   )}
                 </div>
                 <span className="row-label row-label--right">{row}</span>
+              </div>
               </div>
             );
           })}

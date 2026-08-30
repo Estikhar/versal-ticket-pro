@@ -103,6 +103,58 @@ Row letters are `position:sticky; left:0`.
 Booked seats render as a `<span>`, not a disabled `<button>` — unclickable and
 skipped by keyboard navigation, so nobody tabs through dead seats.
 
+## Booking failed with "High demand right now"
+
+That message was a lie. `persist()` ignored the Supabase error object, so a
+rejected write — wrong key, an RLS policy, a missing table — changed nothing,
+the read-back never matched, the retry loop ran out, and buyers were told a
+race had been lost. A database permission problem was being reported as demand.
+
+Every Supabase call now checks its `error` and throws with the real reason;
+`/api/book` catches and returns it. The exhausted-retry message no longer
+blames demand and says plainly that nothing was charged.
+
+If you see this again, the message will now name the actual cause. The usual
+one is using the **anon** key instead of the **service-role** key in
+`SUPABASE_SERVICE_ROLE_KEY` — RLS then silently blocks every write.
+
+## Geometry re-measured off the blueprint
+
+The rows were re-derived by measuring the plan, not by eye. Seat boxes are 50px
+and the pitch is 60px, so gaps are stated in pitch units:
+
+| Row | Layout | Units |
+|---|---|---|
+| A–J | `[20..11] <3.3> [10..1]` | 23.3 |
+| K, P | `[14..8] <14.2> [7..1]` | 28.2 |
+| L–O | `[18..12] <2.3> [11 10] <5.6> [9 8] <2.3> [7..1]` | 28.2 |
+| Q | `[27..1]` continuous | 27.0 |
+
+Three corrections this makes:
+
+1. **The rear is WIDER than the front** — 28.2 units against 23.3. The previous
+   model had it narrower, which is the main reason the hall looked wrong.
+2. **The centre block on L–O is two pairs, not four seats in a run.** The
+   stairwell sits between 10 and 9 — exactly why the PDF prints `11 10` and
+   `9 8` as separate items.
+3. **K and P's void is 14.2 units**, precisely `aisle + 2 + stairwell + 2 +
+   aisle`, so their side blocks land in register with L–O's. Verified: K8 and
+   L12 both sit 8.1 units left of the hall axis; K7 and L7 both sit 7.1 right.
+
+## Prices where the tier changes
+
+A price band is printed in the map wherever the tier changes — before A, C and
+H — instead of only in a legend at the top. By the time you have scrolled to
+row P, a legend eight rows above is no help.
+
+## Two smaller fixes
+
+* **"Already booked" is now green**, not gold, so downloading an existing pass
+  reads as a different job from buying a new one.
+* **A missing `public/upi_qr.png`** used to render as a broken-image glyph in a
+  large empty card, which looks like the payment step itself is broken. It now
+  falls back to a labelled panel pointing at the UPI ID.
+
 ## Loading is not sold out
 
 The booking button used to read **SOLD OUT** and sit disabled on a fresh load.

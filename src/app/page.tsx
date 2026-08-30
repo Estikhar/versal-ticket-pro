@@ -21,6 +21,7 @@ export default function Home() {
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [qrMissing, setQrMissing] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [done, setDone] = useState<{ seats: string[]; total: number; phone: string } | null>(null);
 
@@ -240,9 +241,19 @@ export default function Home() {
           amount delays verification.
         </div>
         <div className="mt-4 flex flex-col items-center gap-4 sm:flex-row sm:items-start">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/upi_qr.png" alt="UPI QR" width={230} height={230}
-               className="shrink-0 rounded-2xl bg-white p-2" />
+          {/* A missing QR used to render as a broken-image glyph inside a huge
+              empty card, which looks like the payment step is broken. */}
+          {qrMissing ? (
+            <div className="qr-missing">
+              <b>UPI QR not set up</b>
+              <span>Pay to the UPI ID shown, or ask the organiser for the QR.</span>
+            </div>
+          ) : (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src="/upi_qr.png" alt="UPI QR" width={230} height={230}
+                 onError={() => setQrMissing(true)}
+                 className="shrink-0 rounded-2xl bg-white p-2" />
+          )}
           <div className="flex-1">
             {EVENT.upiId && (
               <>

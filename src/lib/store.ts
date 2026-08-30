@@ -63,17 +63,32 @@ export async function allSeats(): Promise<SeatRecord[]> {
   if (!usingSupabase) return readJson(SEATS_FILE, seed);
   const { data, error } = await sb().from("seats").select("*");
   if (error) throw new Error(error.message);
-  if (!data?.length) { const s = seed(); await sb().from("seats").insert(s); return s; }
+  if (!data?.length) {
+    const s = seed();
+    const ins = await sb().from("seats").insert(s);
+    if (ins.error) throw new Error(`Seeding failed: ${ins.error.message}`);
+    return s;
+  }
   return data as SeatRecord[];
 }
+/**
+ * A swallowed write error was the worst bug in this file: the upsert would be
+ * rejected (wrong key, RLS policy, missing table), nothing changed, the
+ * read-back never matched, and the retry loop reported "High demand right now
+ * — someone grabbed a seat". A database permission problem was being shown to
+ * buyers as a race they could not win. Writes now throw with the real reason.
+ */
 async function persist(rows: SeatRecord[]) {
   if (!usingSupabase) return writeJson(SEATS_FILE, rows);
-  await sb().from("seats").upsert(rows, { onConflict: "seat_id" });
+  const { error } = await sb().from("seats").upsert(rows, { onConflict: "seat_id" });
+  if (error) throw new Error(`Seat write rejected: ${error.message}`);
 }
 export async function resetHouse(): Promise<void> {
   if (!usingSupabase) return writeJson(SEATS_FILE, seed());
-  await sb().from("seats").delete().neq("seat_id", "");
-  await sb().from("seats").insert(seed());
+  const del = await sb().from("seats").delete().neq("seat_id", "");
+  if (del.error) throw new Error(`Reset failed: ${del.error.message}`);
+  const ins = await sb().from("seats").insert(seed());
+  if (ins.error) throw new Error(`Seeding failed: ${ins.error.message}`);
 }
 
 /** Python is_house_block(). */
@@ -103,8 +118,9 @@ export async function setPrices(next: Record<TierId, number>): Promise<void> {
     if (Number.isFinite(n) && n >= 0 && n <= 1_000_000) clean[t] = Math.round(n);
   }
   if (!usingSupabase) return writeJson(PRICES_FILE, clean);
-  await sb().from("settings").upsert(
+  const { error } = await sb().from("settings").upsert(
     TIER_ORDER.map((t) => ({ tier: t, price: String(clean[t]) })), { onConflict: "tier" });
+  if (error) throw new Error(`Price write rejected: ${error.message}`);
 }
 
 // ------------------------------------------------------------------ booking
@@ -156,8 +172,10 @@ export async function reserveMultipleSeats(
       confirm.find((r) => r.seat_id === seat)?.utr_number === utr);
     if (stuck) return { ok: true, message: "Seats held for verification." };
   }
+  // Reaching here means the write went through but the read-back never
+  // confirmed it, four times over. That is a storage problem, not demand.
   return { ok: false,
-           message: "High demand right now — someone grabbed a seat. Please try again." };
+           message: "Could not confirm the booking with the database. Nothing was charged — please try again, and tell the organiser if it repeats." };
 }
 
 /** Python set_status(): approve -> Booked, reject -> Available with the row wiped. */
