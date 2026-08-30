@@ -17,54 +17,54 @@ interface Props {
 export default function SeatMap({ statuses, selected, prices, onToggle }: Props) {
   const [isZoomed, setIsZoomed] = useState(false);
   const [scale, setScale] = useState(1);
-  const [scaledHeight, setScaledHeight] = useState<number | "auto">("auto");
+  const [mapDims, setMapDims] = useState({ w: 0, h: 0 });
+  const [ready, setReady] = useState(false);
 
+  const mapRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isZoomed) {
-      setScale(1);
-      setScaledHeight("auto");
-      return;
+    function measureMap() {
+      if (!mapRef.current || !containerRef.current) return;
+
+      // Original size naapne ke liye temporarily scale hata dein
+      const oldTransform = mapRef.current.style.transform;
+      mapRef.current.style.transform = "none";
+
+      const mapWidth = mapRef.current.offsetWidth;
+      const mapHeight = mapRef.current.offsetHeight;
+      const containerWidth = containerRef.current.getBoundingClientRect().width;
+
+      mapRef.current.style.transform = oldTransform; // Wapas lagayein
+
+      if (mapWidth > 0 && containerWidth > 0) {
+        setMapDims({ w: mapWidth, h: mapHeight });
+        
+        // 16px minus kiya hai taaki map aur screen ke kinare me halka sa gap rahe
+        const availableWidth = containerWidth - 16;
+        
+        // Agar map bada hai, toh usko scale down (chota) karenge
+        if (mapWidth > availableWidth) {
+          setScale(availableWidth / mapWidth);
+        } else {
+          setScale(1);
+        }
+        setReady(true);
+      }
     }
 
-    const measureExactFit = () => {
-      if (!containerRef.current || !contentRef.current) return;
-
-      // Original size nikalne ke liye transform temporary band karna zaroori hai
-      contentRef.current.style.transform = "none";
-
-      // 16px isliye subtract kiya taaki dono taraf 8px ka padding (gap) bacha rahe
-      const availableWidth = containerRef.current.clientWidth - 16; 
-      
-      // inline-block ki wajah se yeh exactly map ki true height/width nikalega (no extra margins)
-      const trueMapWidth = contentRef.current.offsetWidth;
-      const trueMapHeight = contentRef.current.offsetHeight;
-
-      if (trueMapWidth > 0 && availableWidth > 0) {
-        // Map ko zabardasti stretch na hone dein, sirf shrink karein
-        const newScale = Math.min(1, availableWidth / trueMapWidth);
-        setScale(newScale);
-        
-        // Wrapper box ki height exactly scaled map ke barabar set hogi = 0 Empty Space
-        setScaledHeight(trueMapHeight * newScale);
-      }
-    };
-
-    // DOM load hone par aur mobile tilt (resize) karne par automatically adjust hoga
-    const timeout = setTimeout(measureExactFit, 10);
-    window.addEventListener("resize", measureExactFit);
+    const t = setTimeout(measureMap, 50);
+    window.addEventListener("resize", measureMap);
     return () => {
-      clearTimeout(timeout);
-      window.removeEventListener("resize", measureExactFit);
+      clearTimeout(t);
+      window.removeEventListener("resize", measureMap);
     };
-  }, [isZoomed]);
+  }, []);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", width: "100%", opacity: ready ? 1 : 0, transition: "opacity 0.2s" }}>
       
-      {/* Top Header */}
+      {/* Top Header - Legend & Reset Button */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', minHeight: '36px' }}>
         <div className="legend" style={{ margin: 0 }}>
           <span><i className="lg-free" />Available</span>
@@ -72,7 +72,7 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
           <span><i className="lg-gone" />Booked</span>
         </div>
         
-        {/* Reset Button ko exactly upar fix kiya hai taaki map/seats par block na kare */}
+        {/* Reset Button ko upar hi rakha hai taaki kisi seat par block na kare */}
         {isZoomed && (
           <button 
             type="button" 
@@ -88,22 +88,24 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
         )}
       </div>
 
-      {/* Main Map Box */}
+      {/* Main Viewport Container */}
       <div 
         ref={containerRef}
         className="map-scroll"
         style={{
           position: 'relative',
           width: '100%',
-          overflow: isZoomed ? 'auto' : 'hidden', // Sirf zoom hone par scrollable banega
+          // Yahan exact fix hai: Shrink hone par exact height, Zoom hone par 65vh height
+          height: isZoomed ? '65vh' : `${mapDims.h * scale}px`,
+          minHeight: isZoomed ? '400px' : '0',
+          overflow: isZoomed ? 'auto' : 'hidden',
           background: 'rgba(255, 255, 255, 0.02)',
           border: '1px solid rgba(255, 255, 255, 0.06)',
           borderRadius: '16px',
-          padding: '8px',
-          touchAction: isZoomed ? 'auto' : 'pan-y', // Zoom out pe normal page scroll
+          touchAction: isZoomed ? 'auto' : 'pan-y', // Fit map me vertical scroll alowed
         }}
       >
-        {/* Tap to Zoom Overlay */}
+        {/* Tap to Zoom Overlay Button */}
         {!isZoomed && (
           <div 
             onClick={() => setIsZoomed(true)}
@@ -117,31 +119,33 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
               background: '#F0A93B', color: '#090b10', padding: '14px 28px',
               borderRadius: '30px', fontWeight: 800, fontSize: '1rem',
               boxShadow: '0 10px 30px rgba(0,0,0,0.9)',
+              textAlign: 'center'
             }}>
               Tap map to zoom & select
             </div>
           </div>
         )}
 
-        {/* Height Adjusting Wrapper */}
+        {/* Scalable Bounding Wrapper (Neeche ki extra height gayab karega) */}
         <div 
           style={{
-            height: isZoomed ? 'auto' : (scaledHeight === 'auto' ? 'auto' : `${scaledHeight}px`),
-            width: isZoomed ? 'max-content' : '100%',
-            transition: 'height 0.2s ease',
-            margin: isZoomed ? '0' : '0 auto',
-            textAlign: isZoomed ? 'left' : 'center', // Fix for Flexbox Bug: Centers physically without layout limits
+            width: isZoomed ? 'max-content' : `${mapDims.w * scale}px`,
+            height: isZoomed ? 'max-content' : `${mapDims.h * scale}px`,
+            // MOST IMPORTANT FIX: Zoom hone par margin 0, taaki left side ki seats na katein
+            margin: isZoomed ? '0' : '0 auto', 
+            position: 'relative',
           }}
         >
-          {/* Actual Scaled Content */}
+          {/* Actual Map Content */}
           <div 
-            ref={contentRef}
+            ref={mapRef}
             style={{
-              display: 'inline-block', // Strict Bounding Box Fix (Neeche ki khali jagah ko rokti hai)
               transform: isZoomed ? 'none' : `scale(${scale})`,
-              transformOrigin: isZoomed ? 'top left' : 'top center',
-              padding: isZoomed ? '24px 16px' : '0', // Zoom karne par kinaro se thoda gap
-              transition: 'transform 0.2s ease',
+              transformOrigin: '0 0', // Top Left fix
+              width: 'max-content',
+              position: isZoomed ? 'relative' : 'absolute',
+              top: 0, left: 0,
+              padding: '24px' // Breathing room around the map
             }}
           >
             <div className="stage-wrap" style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'center' }}>
