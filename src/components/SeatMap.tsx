@@ -21,6 +21,8 @@ const BASE_SEAT = 28;
 /** Effective px at which seat numbers become worth drawing. */
 const NUMBER_AT = 19;
 const MAX_ZOOM = 5;
+/** How far a tap on the overview zooms — enough for numbers and real targets. */
+const ZOOM_STEP = 2.6;
 
 /**
  * The auditorium — whole hall on one screen, then pinch to work.
@@ -47,7 +49,10 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
   const [nat, setNat] = useState({ w: 0, h: 0 });
   const [fit, setFit] = useState(1);
   const [k, setK] = useState(1);
+  const kRef = useRef(1);
   const [t, setT] = useState({ x: 0, y: 0 });
+
+  useEffect(() => { kRef.current = k; }, [k]);
 
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef<{ dist: number; k: number; cx: number; cy: number } | null>(null);
@@ -127,19 +132,21 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) gesture.current = null;
 
-    if (!dragged.current) {
-      const now = Date.now();
-      if (now - lastTap.current < 300) {
-        const rect = viewport.current?.getBoundingClientRect();
-        if (rect) {
-          const px = e.clientX - rect.left, py = e.clientY - rect.top;
-          zoomAt(k > fit * 1.6 ? fit : fit * 3, px, py);
-        }
-        lastTap.current = 0;
-      } else {
-        lastTap.current = now;
-      }
-    }
+    if (dragged.current) return;
+
+    // Overview: a 10px seat is not a tap target, so a tap anywhere zooms into
+    // that spot instead. Seats are pointer-events:none until then, which is
+    // what stops a stray tap from booking a seat the buyer cannot even read.
+    const rect = viewport.current?.getBoundingClientRect();
+    if (!rect) return;
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+
+    if (!detailNow()) { zoomAt(fit * ZOOM_STEP, px, py); return; }
+
+    // Zoomed in: taps belong to the seats. Double-tap returns to the full view.
+    const now = Date.now();
+    if (now - lastTap.current < 300) { reset(); lastTap.current = 0; }
+    else lastTap.current = now;
   }
 
   function onWheel(e: React.WheelEvent) {
@@ -150,7 +157,14 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
   }
 
   const detail = k * BASE_SEAT >= NUMBER_AT;
-  const pct = fit ? Math.round((k / fit) * 100) : 100;
+  const detailNow = () => kRef.current * BASE_SEAT >= NUMBER_AT;
+
+  const reset = useCallback(() => {
+    const vp = viewport.current;
+    if (!vp || !nat.w) return;
+    setK(fit);
+    setT({ x: (vp.clientWidth - nat.w * fit) / 2, y: 0 });
+  }, [fit, nat.w]);
 
   useEffect(() => {
     const vp = viewport.current;
@@ -168,21 +182,10 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
         <div className="stage"><span>STAGE</span></div>
       </div>
 
-      <div className="map-bar">
-        <div className="legend">
-          <span><i className="lg-free" />Available</span>
-          <span><i className="lg-sel" />Selected</span>
-          <span><i className="lg-gone" />Booked</span>
-        </div>
-        <div className="zoomer">
-          <button type="button" aria-label="Zoom out" disabled={k <= fit * 1.01}
-                  onClick={() => { const v = viewport.current; if (v)
-                    zoomAt(k / 1.5, v.clientWidth / 2, v.clientHeight / 2); }}>−</button>
-          <span>{pct}%</span>
-          <button type="button" aria-label="Zoom in" disabled={k >= MAX_ZOOM}
-                  onClick={() => { const v = viewport.current; if (v)
-                    zoomAt(k * 1.5, v.clientWidth / 2, v.clientHeight / 2); }}>+</button>
-        </div>
+      <div className="legend">
+        <span><i className="lg-free" />Available</span>
+        <span><i className="lg-sel" />Selected</span>
+        <span><i className="lg-gone" />Booked</span>
       </div>
 
       <div className="map-viewport" ref={viewport}
@@ -239,8 +242,12 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
           </div>
         </div>
 
-        {!detail && (
-          <p className="map-nudge">Pinch or double-tap to zoom in and pick a seat</p>
+        {detail ? (
+          <button type="button" className="map-reset"
+                  onPointerUp={(e) => e.stopPropagation()}
+                  onClick={reset}>⤢ Full view</button>
+        ) : (
+          <p className="map-nudge">Tap the map to zoom in and pick your seats</p>
         )}
       </div>
     </div>
