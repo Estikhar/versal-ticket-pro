@@ -32,17 +32,19 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
         return;
       }
 
-      // Sahi height aur width calculate karne ke liye
+      // Temporarily remove scale to measure true width
       innerRef.current.style.transform = "scale(1)";
-      const availableWidth = containerRef.current.clientWidth;
-      const requiredWidth = innerRef.current.offsetWidth;
-      const requiredHeight = innerRef.current.offsetHeight;
+      
+      // Container ki width minus padding (16px)
+      const availableWidth = containerRef.current.clientWidth - 16; 
+      const requiredWidth = innerRef.current.scrollWidth;
+      const requiredHeight = innerRef.current.scrollHeight;
 
       if (requiredWidth > availableWidth && availableWidth > 0) {
-        // 96% of available width taaki thodi jagah (margin) bachi rahe
-        const newScale = (availableWidth * 0.96) / requiredWidth;
+        // Pure 100% width ka use karega
+        const newScale = availableWidth / requiredWidth;
         setScale(newScale);
-        setWrapperHeight(`${requiredHeight * newScale}px`); // Extra bachi hui height ko kaat dega
+        setWrapperHeight(`${requiredHeight * newScale}px`);
       } else {
         setScale(1);
         setWrapperHeight("auto");
@@ -92,6 +94,7 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
           background: 'rgba(255, 255, 255, 0.02)',
           border: '1px solid rgba(255, 255, 255, 0.06)',
           borderRadius: '16px',
+          padding: '8px', // Outer padding fixed
           height: isZoomed ? 'auto' : wrapperHeight,
           transition: 'height 0.25s ease-out',
           touchAction: isZoomed ? 'auto' : 'pan-y',
@@ -126,10 +129,10 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
               width: 'max-content',
               transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
               willChange: 'transform',
-              padding: '1.5rem' // Scale hone par space barabar rahega
+              padding: isZoomed ? '1rem' : '0', // Zoom mode me padding wapas aayegi
+              paddingTop: '0.5rem'
             }}
           >
-            {/* STAGE ko inner container ke andar move kar diya gaya hai taaki dono sath me shrink hon */}
             <div className="stage-wrap" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'center' }}>
               <div className="stage"><span>STAGE</span></div>
             </div>
