@@ -15,40 +15,41 @@ interface Props {
 }
 
 export default function SeatMap({ statuses, selected, prices, onToggle }: Props) {
-  const [fitMap, setFitMap] = useState(true);
-  const [scale, setScale] = useState(1);
-  const [mapHeight, setMapHeight] = useState<string>('auto');
-  
-  const mapRef = useRef<HTMLDivElement>(null);
+  const [isZoomed, setIsZoomed] = useState(false);
+  const [fitScale, setFitScale] = useState(1);
+  const [fitHeight, setFitHeight] = useState<string>('auto');
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+
+  // Yeh map ke size ko hamesha perfectly calculate karega (Reset bug fix)
   useEffect(() => {
-    function calculateScale() {
-      if (!mapRef.current) return;
-      
-      if (fitMap) {
-        mapRef.current.style.transform = 'none';
-        const realWidth = mapRef.current.scrollWidth;
-        const realHeight = mapRef.current.scrollHeight;
-        const screenWidth = window.innerWidth - 32; 
-        
-        if (realWidth > screenWidth) {
-          const newScale = screenWidth / realWidth;
-          setScale(newScale);
-          setMapHeight(`${realHeight * newScale}px`);
-        } else {
-          setScale(1);
-          setMapHeight('auto');
-        }
+    function calculate() {
+      if (!containerRef.current || !innerRef.current) return;
+
+      const originalTransform = innerRef.current.style.transform;
+      innerRef.current.style.transform = 'none'; // Temporarily hatao taaki sahi width mile
+
+      const cWidth = containerRef.current.clientWidth;
+      const iWidth = innerRef.current.scrollWidth;
+      const iHeight = innerRef.current.scrollHeight;
+
+      if (iWidth > cWidth && cWidth > 0) {
+        const s = cWidth / iWidth;
+        setFitScale(s);
+        setFitHeight(`${iHeight * s}px`);
       } else {
-        setScale(1);
-        setMapHeight('auto');
+        setFitScale(1);
+        setFitHeight('auto');
       }
+
+      innerRef.current.style.transform = originalTransform; // Wapas laga do
     }
 
-    setTimeout(calculateScale, 10);
-    window.addEventListener('resize', calculateScale);
-    return () => window.removeEventListener('resize', calculateScale);
-  }, [fitMap]);
+    setTimeout(calculate, 50);
+    window.addEventListener('resize', calculate);
+    return () => window.removeEventListener('resize', calculate);
+  }, []);
 
   return (
     <div>
@@ -56,51 +57,54 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
         <div className="stage"><span>STAGE</span></div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', minHeight: '32px' }}>
         <div className="legend" style={{ margin: 0 }}>
           <span><i className="lg-free" />Available</span>
           <span><i className="lg-sel" />Selected</span>
           <span><i className="lg-gone" />Booked</span>
         </div>
         
-        {!fitMap && (
+        {isZoomed && (
           <button 
             type="button" 
-            onClick={() => setFitMap(true)}
+            onClick={() => setIsZoomed(false)}
             style={{ 
-              fontSize: '0.75rem', padding: '0.3rem 0.6rem', borderRadius: '6px', 
-              background: 'rgba(255, 242, 205, 0.15)', color: '#FFF2CD', border: 'none'
+              fontSize: '0.8rem', padding: '0.4rem 0.8rem', borderRadius: '6px', 
+              background: 'rgba(255, 242, 205, 0.15)', color: '#FFF2CD', border: 'none',
+              fontWeight: 'bold', cursor: 'pointer'
             }}
           >
-            Reset View
+            🔍 Reset View
           </button>
         )}
       </div>
 
       <div 
+        ref={containerRef}
         className="map-scroll" 
         style={{ 
-          overflowX: fitMap ? 'hidden' : 'auto', 
-          height: mapHeight,
-          transition: 'height 0.2s ease',
+          overflowX: isZoomed ? 'auto' : 'hidden', 
+          height: isZoomed ? 'auto' : fitHeight,
+          transition: 'height 0.3s ease',
           width: '100%',
-          position: 'relative'
+          position: 'relative',
+          touchAction: isZoomed ? 'auto' : 'pan-y' // Mobile par swipe to scroll page fix
         }}
       >
-        {fitMap && (
+        {!isZoomed && (
           <div 
-            onClick={() => setFitMap(false)}
+            onClick={() => setIsZoomed(true)}
             style={{
               position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-              zIndex: 20, cursor: 'zoom-in', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'rgba(9, 11, 16, 0.5)', /* Dark transparent overlay */
-              borderRadius: '12px'
+              zIndex: 20, cursor: 'zoom-in',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(9, 11, 16, 0.05)', // Transparent - map poora clear dikhega
             }}
           >
-            <div style={{
-              background: '#F0A93B', color: '#000', padding: '8px 16px',
-              borderRadius: '20px', fontWeight: 700, fontSize: '0.9rem',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
+            <div className="zoom-btn" style={{
+              background: '#F0A93B', color: '#090b10', padding: '12px 24px',
+              borderRadius: '24px', fontWeight: 800, fontSize: '1rem',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
             }}>
               Tap map to zoom & select
             </div>
@@ -108,12 +112,13 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
         )}
 
         <div 
-          ref={mapRef}
+          ref={innerRef}
           style={{
-            transform: `scale(${scale})`,
+            transform: isZoomed ? 'scale(1)' : `scale(${fitScale})`,
             transformOrigin: 'top left',
             width: 'max-content',
-            transition: 'transform 0.2s ease'
+            transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            willChange: 'transform'
           }}
         >
           <div className="map-inner" style={{ ["--units" as string]: MAX_ROW_UNITS }}>
@@ -160,6 +165,18 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
           </div>
         </div>
       </div>
+      
+      {/* Pulse animation for the zoom button */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes pulse {
+          0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(240, 169, 59, 0.7); }
+          70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(240, 169, 59, 0); }
+          100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(240, 169, 59, 0); }
+        }
+        .zoom-btn {
+          animation: pulse 2s infinite;
+        }
+      `}} />
     </div>
   );
 }
