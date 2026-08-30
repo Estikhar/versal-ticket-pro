@@ -17,54 +17,40 @@ interface Props {
 export default function SeatMap({ statuses, selected, prices, onToggle }: Props) {
   const [isZoomed, setIsZoomed] = useState(false);
   const [scale, setScale] = useState(1);
-  const [mapDims, setMapDims] = useState({ w: 0, h: 0 });
-  const [ready, setReady] = useState(false);
 
-  const mapRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<HTMLDivElement>(null);
 
+  // Map ko screen me properly fit karne ka perfect formula
   useEffect(() => {
-    function measureMap() {
-      if (!mapRef.current || !containerRef.current) return;
+    function calculateScale() {
+      if (!containerRef.current || !mapRef.current) return;
 
-      // Original size naapne ke liye temporarily scale hata dein
-      const oldTransform = mapRef.current.style.transform;
-      mapRef.current.style.transform = "none";
+      const cWidth = containerRef.current.clientWidth;
+      const cHeight = containerRef.current.clientHeight;
+      const mWidth = mapRef.current.offsetWidth;
+      const mHeight = mapRef.current.offsetHeight;
 
-      const mapWidth = mapRef.current.offsetWidth;
-      const mapHeight = mapRef.current.offsetHeight;
-      const containerWidth = containerRef.current.getBoundingClientRect().width;
-
-      mapRef.current.style.transform = oldTransform; // Wapas lagayein
-
-      if (mapWidth > 0 && containerWidth > 0) {
-        setMapDims({ w: mapWidth, h: mapHeight });
-        
-        // 16px minus kiya hai taaki map aur screen ke kinare me halka sa gap rahe
-        const availableWidth = containerWidth - 16;
-        
-        // Agar map bada hai, toh usko scale down (chota) karenge
-        if (mapWidth > availableWidth) {
-          setScale(availableWidth / mapWidth);
-        } else {
-          setScale(1);
-        }
-        setReady(true);
+      if (cWidth > 0 && mWidth > 0) {
+        const scaleX = cWidth / mWidth;
+        const scaleY = cHeight / mHeight;
+        // 0.92 isliye rakha taaki map border se na takraye (Safe Margin)
+        setScale(Math.min(scaleX, scaleY) * 0.92); 
       }
     }
 
-    const t = setTimeout(measureMap, 50);
-    window.addEventListener("resize", measureMap);
+    const t = setTimeout(calculateScale, 10);
+    window.addEventListener("resize", calculateScale);
     return () => {
       clearTimeout(t);
-      window.removeEventListener("resize", measureMap);
+      window.removeEventListener("resize", calculateScale);
     };
-  }, []);
+  }, [isZoomed]); // Jab bhi zoom in/out hoga, scale recalculate hoga
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", width: "100%", opacity: ready ? 1 : 0, transition: "opacity 0.2s" }}>
+    <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
       
-      {/* Top Header - Legend & Reset Button */}
+      {/* HEADER: Legend & Reset Button */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', minHeight: '36px' }}>
         <div className="legend" style={{ margin: 0 }}>
           <span><i className="lg-free" />Available</span>
@@ -72,83 +58,65 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
           <span><i className="lg-gone" />Booked</span>
         </div>
         
-        {/* Reset Button ko upar hi rakha hai taaki kisi seat par block na kare */}
+        {/* FIX: Button ki jagah div use kiya hai taaki wo chauda (wide) na ho */}
         {isZoomed && (
-          <button 
-            type="button" 
+          <div 
             onClick={() => setIsZoomed(false)}
             style={{ 
-              fontSize: '0.85rem', padding: '0.5rem 1rem', borderRadius: '8px', 
-              background: '#F0A93B', color: '#090b10', border: 'none',
-              fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 12px rgba(240, 169, 59, 0.3)'
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              background: '#F0A93B', color: '#000',
+              padding: '6px 14px', borderRadius: '8px', 
+              fontSize: '13px', fontWeight: 'bold', cursor: 'pointer',
+              width: 'max-content', whiteSpace: 'nowrap', // Chauda hone se rokega
+              boxShadow: '0 4px 10px rgba(240, 169, 59, 0.3)'
             }}
           >
             🔍 Reset View
-          </button>
+          </div>
         )}
       </div>
 
-      {/* Main Viewport Container */}
+      {/* 
+        MAIN DIBBA (CONTAINER): 
+        Iska size bada (65vh) kar diya hai taaki Back button theek bottom pe jaye 
+        aur koi bekar khali space na bache!
+      */}
       <div 
         ref={containerRef}
         className="map-scroll"
         style={{
           position: 'relative',
           width: '100%',
-          // Yahan exact fix hai: Shrink hone par exact height, Zoom hone par 65vh height
-          height: isZoomed ? '65vh' : `${mapDims.h * scale}px`,
-          minHeight: isZoomed ? '400px' : '0',
-          overflow: isZoomed ? 'auto' : 'hidden',
+          height: '65vh', // Screen ka max hissa cover karega
+          minHeight: '450px',
+          maxHeight: '700px',
           background: 'rgba(255, 255, 255, 0.02)',
-          border: '1px solid rgba(255, 255, 255, 0.06)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
           borderRadius: '16px',
-          touchAction: isZoomed ? 'auto' : 'pan-y', // Fit map me vertical scroll alowed
+          overflow: isZoomed ? 'auto' : 'hidden', // Scroll sirf zoom pe on hoga
+          display: 'flex',
+          // Zoomed In -> Left Top se shuru, Zoomed Out -> Center
+          alignItems: isZoomed ? 'flex-start' : 'center',
+          justifyContent: isZoomed ? 'flex-start' : 'center',
+          touchAction: isZoomed ? 'auto' : 'none',
         }}
       >
-        {/* Tap to Zoom Overlay Button */}
-        {!isZoomed && (
-          <div 
-            onClick={() => setIsZoomed(true)}
-            style={{
-              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-              zIndex: 20, cursor: 'zoom-in',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <div className="zoom-btn" style={{
-              background: '#F0A93B', color: '#090b10', padding: '14px 28px',
-              borderRadius: '30px', fontWeight: 800, fontSize: '1rem',
-              boxShadow: '0 10px 30px rgba(0,0,0,0.9)',
-              textAlign: 'center'
-            }}>
-              Tap map to zoom & select
-            </div>
-          </div>
-        )}
-
-        {/* Scalable Bounding Wrapper (Neeche ki extra height gayab karega) */}
+        
+        {/* MAP SCALING WRAPPER */}
         <div 
           style={{
-            width: isZoomed ? 'max-content' : `${mapDims.w * scale}px`,
-            height: isZoomed ? 'max-content' : `${mapDims.h * scale}px`,
-            // MOST IMPORTANT FIX: Zoom hone par margin 0, taaki left side ki seats na katein
-            margin: isZoomed ? '0' : '0 auto', 
-            position: 'relative',
+            transform: isZoomed ? 'none' : `scale(${scale})`,
+            transformOrigin: 'center center',
+            transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+            // FIX: Row Labels (A,B,C) kinare se chipke na, isliye badi padding (40px)
+            padding: isZoomed ? '40px 32px' : '0', 
+            width: 'max-content',
           }}
         >
-          {/* Actual Map Content */}
-          <div 
-            ref={mapRef}
-            style={{
-              transform: isZoomed ? 'none' : `scale(${scale})`,
-              transformOrigin: '0 0', // Top Left fix
-              width: 'max-content',
-              position: isZoomed ? 'relative' : 'absolute',
-              top: 0, left: 0,
-              padding: '24px' // Breathing room around the map
-            }}
-          >
-            <div className="stage-wrap" style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'center' }}>
+          {/* THE ACTUAL MAP */}
+          <div ref={mapRef} style={{ width: 'max-content' }}>
+            
+            <div className="stage-wrap" style={{ marginBottom: '2.5rem', display: 'flex', justifyContent: 'center' }}>
               <div className="stage"><span>STAGE</span></div>
             </div>
 
@@ -196,6 +164,28 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
             </div>
           </div>
         </div>
+
+        {/* TAP TO ZOOM OVERLAY */}
+        {!isZoomed && (
+          <div 
+            onClick={() => setIsZoomed(true)}
+            style={{
+              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+              zIndex: 20, cursor: 'zoom-in',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <div className="zoom-btn" style={{
+              background: '#F0A93B', color: '#090b10', padding: '14px 28px',
+              borderRadius: '30px', fontWeight: 800, fontSize: '1rem',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.9)',
+              textAlign: 'center'
+            }}>
+              Tap map to zoom & select
+            </div>
+          </div>
+        )}
+
       </div>
 
       <style dangerouslySetInnerHTML={{__html: `
