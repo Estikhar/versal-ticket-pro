@@ -17,42 +17,53 @@ interface Props {
 export default function SeatMap({ statuses, selected, prices, onToggle }: Props) {
   const [isZoomed, setIsZoomed] = useState(false);
   const [scale, setScale] = useState(1);
+  const [wrapperSize, setWrapperSize] = useState({ w: "auto", h: "auto" });
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const innerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    function updateScale() {
-      if (!containerRef.current || !innerRef.current || isZoomed) return;
+    function updateLayout() {
+      if (!containerRef.current || !mapRef.current) return;
       
-      // Original size naapne ke liye scale temporary hata dein
-      innerRef.current.style.transform = "none";
-      
-      const cWidth = containerRef.current.clientWidth;
-      const cHeight = containerRef.current.clientHeight;
-      const mWidth = innerRef.current.offsetWidth;
-      const mHeight = innerRef.current.offsetHeight;
+      if (isZoomed) {
+        setScale(1);
+        setWrapperSize({ w: "auto", h: "auto" });
+        return;
+      }
 
-      if (cWidth > 0 && mWidth > 0) {
-        // Width aur Height dono ko check karke perfect scale nikalenge
-        const scaleX = (cWidth * 0.95) / mWidth; // 95% taaki thodi padding bachi rahe
-        const scaleY = (cHeight * 0.95) / mHeight;
-        setScale(Math.min(scaleX, scaleY)); // Jo chota hoga wo apply hoga, jisse map kabhi katega nahi
+      // Sahi size naapne ke liye scale temporary hatao
+      mapRef.current.style.transform = "none";
+      
+      const containerWidth = containerRef.current.clientWidth;
+      const realMapWidth = mapRef.current.scrollWidth;
+      const realMapHeight = mapRef.current.scrollHeight;
+
+      if (realMapWidth > 0 && containerWidth > 0) {
+        // Map ko dibbe ki 95% width me fit karo taaki thodi jagah bache
+        const newScale = (containerWidth * 0.95) / realMapWidth;
+        setScale(newScale);
+        
+        // Dibbe ke andar ki khali jagah (extra height) ko exact fit karo
+        setWrapperSize({ 
+          w: `${realMapWidth * newScale}px`, 
+          h: `${realMapHeight * newScale}px` 
+        });
       }
     }
 
-    const timeout = setTimeout(updateScale, 50);
-    window.addEventListener("resize", updateScale);
+    const timeout = setTimeout(updateLayout, 50);
+    window.addEventListener("resize", updateLayout);
     return () => {
       clearTimeout(timeout);
-      window.removeEventListener("resize", updateScale);
+      window.removeEventListener("resize", updateLayout);
     };
   }, [isZoomed]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
       
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', minHeight: '32px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div className="legend" style={{ margin: 0 }}>
           <span><i className="lg-free" />Available</span>
           <span><i className="lg-sel" />Selected</span>
@@ -60,21 +71,20 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
         </div>
       </div>
 
-      {/* Main Container - Ab yeh poora empty space cover karega (60vh height) */}
+      {/* MAIN CONTAINER (Bada Dibba) */}
       <div 
         style={{
           position: 'relative',
           width: '100%',
-          height: '60vh', // Mobile ki height ka 60% hissa cover karega
-          minHeight: '400px',
-          maxHeight: '600px',
+          height: '65vh', // Screen ka 65% height lega (Bada Size)
+          minHeight: '450px',
           background: 'rgba(255, 255, 255, 0.02)',
-          border: '1px solid rgba(255, 255, 255, 0.06)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
           borderRadius: '16px',
           overflow: 'hidden',
         }}
       >
-        {/* Floating Reset Button - Hamesha container ke andar bottom-right me rahega */}
+        {/* RESET BUTTON - Hamesha corner me fix rahega */}
         {isZoomed && (
           <button 
             type="button" 
@@ -83,14 +93,14 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
               position: 'absolute', bottom: '16px', right: '16px', zIndex: 50,
               fontSize: '0.9rem', padding: '0.6rem 1.2rem', borderRadius: '12px', 
               background: '#F0A93B', color: '#090b10', border: 'none',
-              fontWeight: '800', cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,0.8)'
+              fontWeight: '800', cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,0,0,0.7)'
             }}
           >
             🔍 Reset View
           </button>
         )}
 
-        {/* Click to Zoom Overlay */}
+        {/* OVERLAY - Click karne par zoom hoga */}
         {!isZoomed && (
           <div 
             onClick={() => setIsZoomed(true)}
@@ -111,7 +121,7 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
           </div>
         )}
 
-        {/* Actual Scrollable Area */}
+        {/* SCROLLABLE AREA */}
         <div 
           ref={containerRef}
           className="map-scroll"
@@ -122,74 +132,76 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
             display: 'flex',
             alignItems: isZoomed ? 'flex-start' : 'center',
             justifyContent: isZoomed ? 'flex-start' : 'center',
+            padding: isZoomed ? '24px' : '0',
             touchAction: isZoomed ? 'auto' : 'none',
           }}
         >
-          <div 
-            ref={innerRef}
-            style={{
-              transform: isZoomed ? 'scale(1)' : `scale(${scale})`,
-              transformOrigin: 'center',
-              width: 'max-content',
-              transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-              padding: isZoomed ? '24px' : '0' // Zoom karne par corners pe chipkega nahi
-            }}
-          >
-            <div className="stage-wrap" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'center' }}>
-              <div className="stage"><span>STAGE</span></div>
-            </div>
+          {/* EXACT FIT SIZING WRAPPER */}
+          <div style={{ width: wrapperSize.w, height: wrapperSize.h }}>
+            
+            {/* ORIGINAL MAP (No Sticky Bugs) */}
+            <div 
+              ref={mapRef}
+              style={{
+                transform: `scale(${scale})`,
+                transformOrigin: 'top left',
+                width: 'max-content',
+                transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                willChange: 'transform'
+              }}
+            >
+              <div className="stage-wrap" style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'center' }}>
+                <div className="stage"><span>STAGE</span></div>
+              </div>
 
-            <div className="map-inner" style={{ ["--units" as string]: MAX_ROW_UNITS }}>
-              {ROW_IDS.map((row, i) => {
-                const cells = ROW_LAYOUTS[row];
-                const tier = ROW_TIER[row];
-                const bandHere = i === 0 || ROW_TIER[ROW_IDS[i - 1]] !== tier;
-                
-                return (
-                  <div key={row} className="contents">
-                    {bandHere && (
-                      <div className="tier-band"
+              <div className="map-inner" style={{ ["--units" as string]: MAX_ROW_UNITS }}>
+                {ROW_IDS.map((row, i) => {
+                  const cells = ROW_LAYOUTS[row];
+                  const tier = ROW_TIER[row];
+                  const bandHere = i === 0 || ROW_TIER[ROW_IDS[i - 1]] !== tier;
+                  
+                  return (
+                    <div key={row} className="contents">
+                      {bandHere && (
+                        <div className="tier-band"
+                             style={{ ["--tier-accent" as string]: TIER_ACCENT[tier] }}>
+                          <span className="tier-band__line" />
+                          <span className="tier-band__text">
+                            {tier} · ₹{prices[tier].toLocaleString("en-IN")}
+                            <em>{TIER_ROWS[tier]}</em>
+                          </span>
+                          <span className="tier-band__line" />
+                        </div>
+                      )}
+                      <div className="seat-row"
                            style={{ ["--tier-accent" as string]: TIER_ACCENT[tier] }}>
-                        <span className="tier-band__line" />
-                        <span className="tier-band__text">
-                          {tier} · ₹{prices[tier].toLocaleString("en-IN")}
-                          <em>{TIER_ROWS[tier]}</em>
-                        </span>
-                        <span className="tier-band__line" />
+                        
+                        <span className="row-label">{row}</span>
+                        
+                        <div className="row-seats"
+                             style={{ width: `calc(${rowUnits(cells)} * var(--pitch))` }}>
+                          {cells.map((cell, i) =>
+                            isGap(cell) ? (
+                              <span key={`g${i}`} className="aisle" aria-hidden
+                                    style={{ width: `calc(${cell.gap} * var(--pitch))` }} />
+                            ) : (
+                              <Seat key={`${row}${cell}`} row={row} n={cell} tier={tier}
+                                    status={statuses[`${row}${cell}`] ?? AVAILABLE}
+                                    picked={selected.has(`${row}${cell}`)}
+                                    price={prices[tier]} onToggle={onToggle} />
+                            ),
+                          )}
+                        </div>
+                        
+                        <span className="row-label row-label--right">{row}</span>
+                        
                       </div>
-                    )}
-                    <div className="seat-row"
-                         style={{ ["--tier-accent" as string]: TIER_ACCENT[tier], position: 'relative' }}>
-                      
-                      {/* FIXED: A B C D Row Labels ab Sticky hain (scroll karne par nahi chupenge) */}
-                      <span className="row-label" style={{ position: 'sticky', left: 0, zIndex: 10, background: '#090b10', padding: '0 4px', borderRadius: '4px' }}>
-                        {row}
-                      </span>
-                      
-                      <div className="row-seats"
-                           style={{ width: `calc(${rowUnits(cells)} * var(--pitch))` }}>
-                        {cells.map((cell, i) =>
-                          isGap(cell) ? (
-                            <span key={`g${i}`} className="aisle" aria-hidden
-                                  style={{ width: `calc(${cell.gap} * var(--pitch))` }} />
-                          ) : (
-                            <Seat key={`${row}${cell}`} row={row} n={cell} tier={tier}
-                                  status={statuses[`${row}${cell}`] ?? AVAILABLE}
-                                  picked={selected.has(`${row}${cell}`)}
-                                  price={prices[tier]} onToggle={onToggle} />
-                          ),
-                        )}
-                      </div>
-                      
-                      <span className="row-label row-label--right" style={{ position: 'sticky', right: 0, zIndex: 10, background: '#090b10', padding: '0 4px', borderRadius: '4px' }}>
-                        {row}
-                      </span>
-                      
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
+            
           </div>
         </div>
       </div>
