@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { toJpeg } from "html-to-image";
 import { EVENT, inr } from "@/lib/config";
@@ -23,6 +23,8 @@ export default function TicketCard({ row }: { row: Row }) {
   const ref = useRef<HTMLDivElement>(null);
   const [qr, setQr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [png, setPng] = useState<{ url: string; blob: Blob } | null>(null);
+  const [note, setNote] = useState("");
 
   const payload = ["PASS", EVENT.name, `Seat: ${row.seat_id}`,
                    `Name: ${row.name}`, `Phone: ${row.phone}`,
@@ -45,24 +47,96 @@ export default function TicketCard({ row }: { row: Row }) {
     return { w: 1 + (seed % 4), gold: (seed >> 3) % 3 === 0, tall: (seed >> 5) % 4 !== 0 };
   });
 
-  async function download() {
-    if (!ref.current) return;
-    setBusy(true);
+  /**
+   * Rasterise once, then hand the buyer a real image.
+   *
+   * The old version set an anchor's href to the data: URI straight from
+   * toJpeg. Three things were wrong with that, and together they are why the
+   * pass never reached anyone's gallery:
+   *   - iOS Safari ignores `download` on a data: URI and just opens the image
+   *     in a tab, so nothing is ever saved;
+   *   - the anchor was never appended to the document, and a detached
+   *     element's .click() does not fire in Safari or Firefox;
+   *   - at pixelRatio 3 the base64 string runs to several MB, which some
+   *     browsers drop silently.
+   */
+  const build = useCallback(async () => {
+    if (!ref.current || png) return png;
+    // html-to-image will happily rasterise before the webfonts have loaded,
+    // which yields a pass set in fallback type.
+    if (document.fonts?.ready) await document.fonts.ready;
+    const dataUrl = await toJpeg(ref.current, {
+      quality: 0.95, pixelRatio: 3, backgroundColor: "#0f0f0f", cacheBust: true,
+    });
+    const blob = await (await fetch(dataUrl)).blob();
+    const made = { url: URL.createObjectURL(blob), blob };
+    setPng(made);
+    return made;
+  }, [png]);
+
+  useEffect(() => {
+    if (qr) void build().catch(() => setNote("Could not render the pass. Reload and try again."));
+  }, [qr, build]);
+
+  useEffect(() => () => { if (png) URL.revokeObjectURL(png.url); }, [png]);
+
+  const filename = `VIP_Pass_${row.seat_id}.jpeg`;
+
+  /**
+   * On a phone the share sheet is the only route into the photo gallery — a
+   * plain download lands in Files or the Downloads folder, which is exactly
+   * what "it never showed up in my gallery" means. Share gives the buyer
+   * "Save Image" / "Add to Photos". Desktop falls back to a real download.
+   */
+  async function save() {
+    setBusy(true); setNote("");
     try {
-      const data = await toJpeg(ref.current, {
-        quality: 0.95, pixelRatio: 3, backgroundColor: "#0f0f0f", cacheBust: true,
-      });
+      const made = png ?? (await build());
+      if (!made) return;
+      const file = new File([made.blob], filename, { type: "image/jpeg" });
+
+      if (navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: `Seat ${row.seat_id}` });
+          setNote("Choose Save Image to put it in your gallery.");
+          return;
+        } catch (err) {
+          // user dismissed the sheet — fall through to a download
+          if (err instanceof DOMException && err.name === "AbortError") return;
+        }
+      }
+
       const a = document.createElement("a");
-      a.href = data;
-      a.download = `VIP_Pass_${row.seat_id}.jpeg`;
+      a.href = made.url;
+      a.download = filename;
+      a.style.display = "none";
+      document.body.appendChild(a);       // detached anchors do not fire in Safari
       a.click();
+      setTimeout(() => a.remove(), 4000);
+      setNote("Saved to your device's Downloads.");
+    } catch {
+      setNote("Save failed. Long-press the pass above and choose Save Image.");
     } finally { setBusy(false); }
   }
 
   return (
     <div className="space-y-3">
+      {/* The finished pass, as a real image. The live DOM version cannot be
+          long-pressed and saved — a browser only offers "Save Image" on an
+          actual <img>, which is the most reliable route to the gallery on iOS. */}
+      {png && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={png.url} alt={`Pass for seat ${row.seat_id}`}
+             className="w-full rounded-2xl" />
+      )}
+
+      {/* Render source. Stays mounted so it can be rasterised, but is moved
+          off-screen once the image exists — display:none would give it zero
+          size and html-to-image would produce a blank pass. */}
       <div ref={ref} className="relative w-full overflow-hidden rounded-2xl"
-           style={{ background: "#0f0f0f", border: "2px solid #D4AF37" }}>
+           style={{ background: "#0f0f0f", border: "2px solid #D4AF37",
+                    ...(png ? { position: "absolute", left: -99999, top: 0,
+                                width: 640, pointerEvents: "none" } : {}) }}>
         <div className="flex">
           <div className="flex-1 p-4 sm:p-5">
             <p style={{ color: "#D4AF37", fontSize: 9, fontWeight: 900, letterSpacing: "0.24em" }}>
@@ -125,10 +199,16 @@ export default function TicketCard({ row }: { row: Row }) {
         </div>
       </div>
 
-      <button onClick={download} disabled={busy || !qr}
+      <button onClick={save} disabled={busy || !png}
               className="btn-gold w-full disabled:opacity-50">
-        {busy ? "PREPARING…" : `DOWNLOAD PASS · SEAT ${row.seat_id}`}
+        {!png ? "PREPARING PASS…"
+          : busy ? "SAVING…"
+          : `SAVE PASS · SEAT ${row.seat_id}`}
       </button>
+
+      <p className="micro" style={{ textAlign: "center" }}>
+        {note || "On a phone this opens the share sheet — choose Save Image to put the pass in your gallery. You can also long-press the pass above."}
+      </p>
       {row.checkin_time && (
         <p className="text-center text-xs text-emerald-300">
           This pass was already scanned in at {row.checkin_time}.
