@@ -93,8 +93,11 @@ body {
    ========================================================================= */
 /* Viewport clips; the canvas inside is what pans and zooms. transform on a
    promoted layer stays GPU-composited, so it is smooth on a phone. */
+/* The map takes the screen it deserves. dvh so the iOS URL bar collapsing
+   does not resize it mid-gesture. */
 .map-viewport {
   position: relative; overflow: hidden; touch-action: none;
+  height: clamp(320px, 56dvh, 600px);
   border-radius: 16px; border: 1px solid rgba(255,255,255,.07);
   background: rgba(255,255,255,.02); cursor: grab;
 }
@@ -103,20 +106,20 @@ body {
   position: absolute; top: 0; left: 0; transform-origin: 0 0;
   will-change: transform; padding: 4px;
 }
-.map-nudge {
-  position: absolute; left: 0; right: 0; bottom: 8px; margin: 0;
-  text-align: center; font-size: .58rem; letter-spacing: .16em;
-  text-transform: uppercase; color: rgba(232,234,240,.5);
-  pointer-events: none; text-shadow: 0 2px 8px #070A12;
+.map-hint {
+  margin: .6rem 0 0; text-align: center; font-size: .58rem;
+  letter-spacing: .14em; text-transform: uppercase;
+  color: rgba(232,234,240,.42);
 }
 
 .map-inner {
   /* Built once at a fixed base size. Zoom is a transform on the canvas, so
      nothing here re-lays out while pinching. */
   --seat: 28px; --gutter: 5px; --pitch: calc(var(--seat) + var(--gutter));
-  --label: 24px;
+  --label: 24px; --gutter-y: 5px;
   width: calc(var(--units) * var(--pitch) + 2 * var(--label) + 16px);
-  display: flex; flex-direction: column; gap: var(--gutter);
+  /* Row gap is set from JS so the hall fills the viewport height exactly. */
+  display: flex; flex-direction: column; gap: var(--gutter-y);
 }
 
 /* glowing curved stage */
