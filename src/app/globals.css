@@ -329,19 +329,14 @@ body {
   border: 1px dashed rgba(212,175,55,.35); background: rgba(212,175,55,.05);
 }
 
-/* Legend + zoom control sit on one line above the map. */
-.map-bar { display: flex; align-items: center; justify-content: space-between;
-           gap: 1rem; flex-wrap: wrap; margin-bottom: .5rem; }
-.map-bar .legend { margin: 0; justify-content: flex-start; }
-.zoomer { display: inline-flex; align-items: center; gap: .1rem;
-          border: 1px solid rgba(212,175,55,.3); border-radius: 10px;
-          background: rgba(212,175,55,.06); overflow: hidden; }
-.zoomer button { width: 36px; height: 32px; font-size: 1.1rem; font-weight: 900;
-                 color: var(--gold-hi); background: transparent; border: none; }
-.zoomer button:disabled { opacity: .3; }
-.zoomer button:active:not(:disabled) { background: rgba(212,175,55,.18); }
-.zoomer span { min-width: 46px; text-align: center; font-size: .62rem;
-               font-weight: 800; letter-spacing: .06em; color: var(--muted);
-               font-variant-numeric: tabular-nums; }
-.map-hint { margin-top: .5rem; text-align: center; font-size: .6rem;
-            letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+/* Seats are inert at overview scale: a 10px target cannot be tapped
+   accurately, so the whole map acts as one big "zoom in here" surface. */
+.map-canvas:not(.detail) .seat { pointer-events: none; }
+
+.map-reset {
+  position: absolute; right: 10px; bottom: 10px; z-index: 4;
+  padding: .45rem .8rem; border-radius: 999px;
+  font-size: .6rem; font-weight: 900; letter-spacing: .14em;
+  color: #12100C; background-image: var(--gold-css); border: none;
+  box-shadow: 0 6px 18px -6px rgba(212,175,55,.9);
+}
