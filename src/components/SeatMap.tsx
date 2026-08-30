@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   ROW_IDS, ROW_LAYOUTS, ROW_TIER, TIER_ACCENT, TIER_ORDER, TIER_ROWS,
   MAX_ROW_UNITS, BLOCKED_SEATS, isGap, rowUnits, type TierId,
@@ -16,6 +16,43 @@ interface Props {
 
 export default function SeatMap({ statuses, selected, prices, onToggle }: Props) {
   const [fitMap, setFitMap] = useState(true);
+  const [scale, setScale] = useState(1);
+  const [mapHeight, setMapHeight] = useState<string>('auto');
+  
+  const mapRef = useRef<HTMLDivElement>(null);
+
+  // Yeh function phone ki screen aur map ki width naap kar perfectly shrink karega
+  useEffect(() => {
+    function calculateScale() {
+      if (!mapRef.current) return;
+      
+      if (fitMap) {
+        // Asli size naapne ke liye pehle scale hatao
+        mapRef.current.style.transform = 'none';
+        
+        const realWidth = mapRef.current.scrollWidth;
+        const realHeight = mapRef.current.scrollHeight;
+        const screenWidth = window.innerWidth - 32; // Mobile screen width (padding ke sath)
+        
+        if (realWidth > screenWidth) {
+          const newScale = screenWidth / realWidth;
+          setScale(newScale);
+          setMapHeight(`${realHeight * newScale}px`); // Extra bachi height hatao
+        } else {
+          setScale(1);
+          setMapHeight('auto');
+        }
+      } else {
+        setScale(1);
+        setMapHeight('auto');
+      }
+    }
+
+    // Load hote hi aur screen rotate karne par run hoga
+    setTimeout(calculateScale, 10);
+    window.addEventListener('resize', calculateScale);
+    return () => window.removeEventListener('resize', calculateScale);
+  }, [fitMap]);
 
   return (
     <div>
@@ -36,21 +73,32 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
           style={{ 
             fontSize: '0.8rem', padding: '0.4rem 0.8rem', borderRadius: '99px', 
             background: 'rgba(255, 242, 205, 0.1)', color: '#FFF2CD', 
-            border: '1px solid rgba(255, 242, 205, 0.3)', fontWeight: 'bold' 
+            border: '1px solid rgba(255, 242, 205, 0.3)', fontWeight: 'bold',
+            cursor: 'pointer'
           }}
         >
           {fitMap ? "🔍 Zoom In (Tap Easily)" : "📱 Fit to Screen"}
         </button>
       </div>
 
-      <div className="map-scroll" style={fitMap ? { overflowX: 'hidden', width: '100%', display: 'flex', justifyContent: 'center' } : {}}>
-        
-        {/* NAYA FIX: Pure layout ko ek sath scale down kiya gaya hai */}
-        <div style={fitMap ? {
-          width: '1000px', /* Map ki original full width */
-          transform: 'scale(calc((100vw - 32px) / 1000))', /* Mobile screen ke hisaab se auto zoom-out */
-          transformOrigin: 'top center',
-        } : {}}>
+      <div 
+        className="map-scroll" 
+        style={{ 
+          overflowX: fitMap ? 'hidden' : 'auto', 
+          height: mapHeight,
+          transition: 'height 0.2s ease',
+          width: '100%'
+        }}
+      >
+        <div 
+          ref={mapRef}
+          style={{
+            transform: `scale(${scale})`,
+            transformOrigin: 'top left', // <-- Yahi wo fix hai jisse map katega nahi
+            width: 'max-content',
+            transition: 'transform 0.2s ease'
+          }}
+        >
           <div className="map-inner" style={{ ["--units" as string]: MAX_ROW_UNITS }}>
             {ROW_IDS.map((row, i) => {
               const cells = ROW_LAYOUTS[row];
@@ -94,7 +142,6 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
             })}
           </div>
         </div>
-        
       </div>
     </div>
   );
