@@ -23,6 +23,10 @@ const NUMBER_AT = 19;
 const MAX_ZOOM = 5;
 /** How far a tap on the overview zooms — enough for numbers and real targets. */
 const ZOOM_STEP = 2.6;
+/** Vertical gap the map is BUILT with, before it is spread to fill the screen. */
+const BASE_GAP = 5;
+/** Flex gaps inside .map-inner: 17 rows + 3 tier bands, so 19 gaps. */
+const GAP_COUNT = 19;
 
 /**
  * The auditorium — whole hall on one screen, then pinch to work.
@@ -47,6 +51,7 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
   const canvas = useRef<HTMLDivElement>(null);
 
   const [nat, setNat] = useState({ w: 0, h: 0 });
+  const [rowGap, setRowGap] = useState(BASE_GAP);
   const [fit, setFit] = useState(1);
   const [k, setK] = useState(1);
   const kRef = useRef(1);
@@ -59,16 +64,32 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
   const dragged = useRef(false);
   const lastTap = useRef(0);
 
-  // Measure once, untransformed, then fit the hall to the viewport width.
+  /**
+   * Measure once untransformed, fit the hall to the viewport WIDTH, then spread
+   * the rows vertically so the map fills the box instead of floating in it.
+   *
+   * The hall is 28.2 units wide against a phone's 390px, so width always binds
+   * and a width-fitted map left 37-49% of the map area empty — which is what
+   * made the screen look broken. Widening the row gaps costs nothing (the
+   * horizontal geometry is untouched) and turns that dead space into a hall
+   * that reads at a glance.
+   */
   useLayoutEffect(() => {
     const vp = viewport.current, cv = canvas.current;
     if (!vp || !cv || nat.w) return;
-    const w = cv.scrollWidth, h = cv.scrollHeight;
-    if (!w || !h) return;
-    setNat({ w, h });
+    const w = cv.scrollWidth, baseH = cv.scrollHeight;
+    if (!w || !baseH) return;
+
     const f = (vp.clientWidth - 8) / w;
+    const wanted = vp.clientHeight / f;              // height needed in map units
+    const g = Math.max(BASE_GAP,
+                Math.min(44, BASE_GAP + (wanted - baseH) / GAP_COUNT));
+    const h = baseH + (g - BASE_GAP) * GAP_COUNT;
+
+    setRowGap(g);
+    setNat({ w, h });
     setFit(f); setK(f);
-    setT({ x: (vp.clientWidth - w * f) / 2, y: 0 });
+    setT({ x: (vp.clientWidth - w * f) / 2, y: (vp.clientHeight - h * f) / 2 });
   }, [nat.w]);
 
   const clamp = useCallback((nx: number, ny: number, nk: number) => {
@@ -189,7 +210,6 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
       </div>
 
       <div className="map-viewport" ref={viewport}
-           style={{ height: nat.h ? nat.h * fit + 8 : 260 }}
            onPointerDown={onPointerDown} onPointerMove={onPointerMove}
            onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
            onWheel={onWheel}>
@@ -198,7 +218,9 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
              style={nat.w
                ? { transform: `translate3d(${t.x}px, ${t.y}px, 0) scale(${k})` }
                : undefined}>
-          <div className="map-inner" style={{ ["--units" as string]: MAX_ROW_UNITS }}>
+          <div className="map-inner"
+               style={{ ["--units" as string]: MAX_ROW_UNITS,
+                        ["--gutter-y" as string]: `${rowGap}px` }}>
             {ROW_IDS.map((row, i) => {
               const cells = ROW_LAYOUTS[row];
               const tier = ROW_TIER[row];
@@ -242,14 +264,18 @@ export default function SeatMap({ statuses, selected, prices, onToggle }: Props)
           </div>
         </div>
 
-        {detail ? (
+        {detail && (
           <button type="button" className="map-reset"
                   onPointerUp={(e) => e.stopPropagation()}
                   onClick={reset}>⤢ Full view</button>
-        ) : (
-          <p className="map-nudge">Tap the map to zoom in and pick your seats</p>
         )}
       </div>
+
+      {/* Below the map, not over it — as an overlay it sat on top of rows P and Q. */}
+      <p className="map-hint">
+        {detail ? "Tap seats to select · drag to move · double-tap for full view"
+                : "Tap anywhere on the map to zoom in and pick your seats"}
+      </p>
     </div>
   );
 }
